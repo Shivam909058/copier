@@ -16,7 +16,7 @@ android {
         applicationId = "dev.copier"
         minSdk = 29
         targetSdk = 36
-        val version = copierVersion ?: "0.4.0"
+        val version = copierVersion ?: "0.5.0"
         versionName = version
         // 1.2.3 → 10203, so every build installs over the previous one.
         versionCode = (version.substringBefore('-').split('.').map { it.toInt() } + listOf(0, 0)).let { it[0] * 10_000 + it[1] * 100 + it[2] }

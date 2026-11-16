@@ -72,8 +72,14 @@ class Store private constructor(context: Context) {
 
     /** Also check the clipboard after menus and dialogs close (CopyDetector.thorough). */
     var thoroughCopy: Boolean
-        get() = prefs.getBoolean(THOROUGH_COPY, true)
+        // Unless the user chose: on only where the system doesn't announce copies itself.
+        get() = if (prefs.contains(THOROUGH_COPY)) prefs.getBoolean(THOROUGH_COPY, true) else !systemAnnouncesCopies
         set(value) = prefs.edit().putBoolean(THOROUGH_COPY, value).apply()
+
+    /** Learned at runtime: this phone says "Text copied" on every copy, so nothing else is needed. */
+    var systemAnnouncesCopies: Boolean
+        get() = prefs.getBoolean(SYSTEM_ANNOUNCES, false)
+        set(value) = prefs.edit().putBoolean(SYSTEM_ANNOUNCES, value).apply()
 
     /** Learned at runtime: this phone refuses clipboard reads from the focus overlay. */
     var overlayBlocked: Boolean
@@ -164,6 +170,7 @@ class Store private constructor(context: Context) {
         private const val MAC_PORT = "mac_port"
         private const val AUTO_CLIPBOARD = "auto_clipboard"
         private const val THOROUGH_COPY = "thorough_copy"
+        private const val SYSTEM_ANNOUNCES = "system_announces_copies"
         private const val OVERLAY_BLOCKED = "overlay_blocked"
         private const val AUTO_COPY_WANTED = "auto_copy_wanted"
         private const val PAUSED_FOR = "paused_for"

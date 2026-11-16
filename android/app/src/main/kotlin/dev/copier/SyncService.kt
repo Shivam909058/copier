@@ -56,6 +56,8 @@ class SyncService : Service() {
     private lateinit var connectivity: ConnectivityManager
     private lateinit var discovery: Discovery
     private lateinit var ringer: Ringer
+    lateinit var selfManage: SelfManage
+        private set
     private val main = Handler(Looper.getMainLooper())
 
     // ponytail: unbounded pool; fine for the handful of concurrent offers one Mac sends.
@@ -128,6 +130,7 @@ class SyncService : Service() {
         bridge = ClipboardBridge(this)
         transfers = Transfers(this, store, bridge)
         ringer = Ringer(this)
+        selfManage = SelfManage(this, store)
         Notifications.createChannels(this)
         startForeground(Notifications.ID_STATUS, Notifications.status(this, statusText(), latestEvent()), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         instance = this
@@ -140,6 +143,7 @@ class SyncService : Service() {
         contentResolver.registerContentObserver(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, true, screenshotObserver)
         thread(name = "copier-connect") { connectLoop() }
         scheduler.scheduleWithFixedDelay(::ping, PING_INTERVAL_S, PING_INTERVAL_S, TimeUnit.SECONDS)
+        scheduler.scheduleWithFixedDelay(::manageAutoCopy, SELF_MANAGE_INTERVAL_S, SELF_MANAGE_INTERVAL_S, TimeUnit.SECONDS)
         refreshClipboardWatcher()
     }
 
@@ -314,8 +318,12 @@ class SyncService : Service() {
     fun latestEvent(): String? {
         // Someone who turned automatic copy on should hear about it the moment Android stops it.
         if (store.autoCopyWanted && !CopyWatcher.running && store.pairedMac != null) {
-            return store.pausedFor?.let { "Automatic copy paused for $it. Tap to turn it back on" }
-                ?: "Automatic copy is off. Tap to turn it on"
+            val paused = store.pausedFor
+            when {
+                paused != null && selfManage.available -> return "Automatic copy paused for $paused; it comes back by itself"
+                paused != null -> return "Automatic copy paused for $paused. Tap to turn it back on"
+                !selfManage.available -> return "Automatic copy is off. Tap to turn it on"
+            }
         }
         return activity.latest()?.let { "${it.summary()} · ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it.time))}" }
     }
@@ -517,10 +525,11 @@ class SyncService : Service() {
         if (control == null) return
         val watching = CopyWatcher.running
         val reason = if (watching) null else store.pausedFor?.let { "paused for $it" }
-        val current = "${battery?.first}|${battery?.second}|$watching|$reason"
+        val managed = selfManage.available
+        val current = "${battery?.first}|${battery?.second}|$watching|$reason|$managed"
         if (current == statusSent) return
         statusSent = current
-        sendToMac(Header("status", battery = battery?.first, charging = battery?.second, watcher = watching, msg = reason))
+        sendToMac(Header("status", battery = battery?.first, charging = battery?.second, watcher = watching, msg = reason, managed = managed))
     }
 
     /** The copy watcher started or stopped: tell the Mac and refresh what the user sees here. */
@@ -530,6 +539,15 @@ class SyncService : Service() {
         main.post {
             Notifications.updateStatus(this, statusText(), latestEvent())
             listener?.invoke(statusText())
+        }
+    }
+
+    private fun manageAutoCopy() {
+        try {
+            selfManage.tick()
+            sendStatus() // picks up the permission being granted from the Mac
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "self-managing automatic copy failed", e) // must not kill the scheduler
         }
     }
 
@@ -545,6 +563,7 @@ class SyncService : Service() {
             else -> "off"
         }
         diag("phone: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), Copier ${store.appVersion}")
+        diag("turns itself back on: ${if (selfManage.available) "yes" else "no (needs the one-time USB setup from the Mac)"}")
         diag("automatic copy: $automatic; menu checks ${if (store.thoroughCopy) "on" else "off"}; overlay reads ${if (store.overlayBlocked) "blocked on this phone" else "ok so far"}")
         diag(if (CopyWatcher.running) "ready: copy something on the phone now" else "automatic copy isn't running, so nothing will be detected")
     }
@@ -690,6 +709,7 @@ class SyncService : Service() {
         private const val MAX_BACKOFF_MS = 60_000L
         private const val PING_INTERVAL_S = 60L
         private const val PONG_TIMEOUT_S = 20L
+        private const val SELF_MANAGE_INTERVAL_S = 2L
         private const val OWN_WRITE_GRACE_MS = 1_500L
         private const val STALE_SIGHTING_MS = 5_000L
 

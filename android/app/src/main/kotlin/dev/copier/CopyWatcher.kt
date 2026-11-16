@@ -35,6 +35,8 @@ class CopyWatcher : AccessibilityService() {
     private var probe: View? = null
     private var awaitingActivity: CopyDetector.Pending? = null
     private var overlayMisses = 0
+    private var pausing = false
+    private var pauseLabels: Map<String, String> = emptyMap() // lowercased app name → package
     private var lastProblemReportAt = 0L
 
     override fun onServiceConnected() {
@@ -47,6 +49,7 @@ class CopyWatcher : AccessibilityService() {
         store.pausedFor = null
         Notifications.cancelPaused(this)
         applyEventTypes()
+        pauseLabels = installedPauseApps()
         if (store.pairedMac != null && SyncService.instance == null) {
             try {
                 startForegroundService(Intent(this, SyncService::class.java))
@@ -59,6 +62,9 @@ class CopyWatcher : AccessibilityService() {
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        // Unbound while running and not by us: the user switched it off in Settings. SelfManage
+        // must not turn it straight back on.
+        if (instance === this && !pausing) store.autoCopyWanted = false
         stopped()
         return super.onUnbind(intent)
     }
@@ -96,6 +102,14 @@ class CopyWatcher : AccessibilityService() {
         }
         val now = SystemClock.elapsedRealtime()
         val label = if (kind == null || kind == CopyDetector.Kind.WINDOW) "" else labelOf(event)
+        if (kind == CopyDetector.Kind.CLICK) {
+            // Tapping the app's icon (home screen, recents, a chooser) comes before its first window,
+            // which gives the payment app's startup check the best chance of not seeing us.
+            pausePackageFor(label)?.let {
+                pauseFor(it)
+                return
+            }
+        }
         val decision = if (kind == null) {
             CopyDetector.Decision.Ignore("not a copy signal")
         } else {
@@ -202,6 +216,12 @@ class CopyWatcher : AccessibilityService() {
 
     private fun deliver(pending: CopyDetector.Pending, via: String, read: ClipboardBridge.Read) {
         val outcome = AutoCopy.offer(this, read)
+        if (outcome == AutoCopy.Outcome.SENT && pending.trigger != "window" && pending.trigger != "click" && !store.systemAnnouncesCopies) {
+            // This phone announces every copy, so the blunt "a window changed" checks aren't needed.
+            store.systemAnnouncesCopies = true
+            detector.thorough = store.thoroughCopy
+            report("this phone announces copies itself; window checks are now ${if (detector.thorough) "on" else "off"}")
+        }
         finish(
             pending, "$via: ${outcome.text}", sent = outcome == AutoCopy.Outcome.SENT,
             problem = pending.explicit && outcome in setOf(AutoCopy.Outcome.UNREADABLE, AutoCopy.Outcome.NO_SERVICE, AutoCopy.Outcome.NOT_CONNECTED),
@@ -245,11 +265,32 @@ class CopyWatcher : AccessibilityService() {
         } catch (e: PackageManager.NameNotFoundException) {
             pkg
         }
+        if (pausing) return // several window events arrive before the service is actually gone
+        pausing = true
         Log.i(TAG, "pausing automatic copy for a payment app")
         store.pausedFor = label
+        val selfManage = SyncService.instance?.selfManage
+        selfManage?.onPaused(pkg)
         report("automatic copy paused for $label")
-        Notifications.paused(this, label)
+        Notifications.paused(this, label, comesBackByItself = selfManage?.available == true)
         disableSelf() // → onUnbind → stopped() tells the Mac
+    }
+
+    private fun installedPauseApps(): Map<String, String> = buildMap {
+        for (pkg in store.pauseApps) {
+            try {
+                put(packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString().trim().lowercase(), pkg)
+            } catch (e: PackageManager.NameNotFoundException) {
+                // not installed
+            }
+        }
+    }
+
+    /** "GPay" or "GPay, 2 notifications" on an icon → that app's package. */
+    private fun pausePackageFor(label: String): String? {
+        val text = label.trim().lowercase()
+        if (text.isEmpty() || text.length > 60) return null
+        return pauseLabels.entries.firstOrNull { (name, _) -> text == name || text.startsWith("$name,") }?.value
     }
 
     private fun report(text: String) {
@@ -315,6 +356,11 @@ class CopyWatcher : AccessibilityService() {
 
         fun setThorough(enabled: Boolean) {
             instance?.detector?.thorough = enabled
+        }
+
+        /** The pause list was edited in the app. */
+        fun pauseAppsChanged() {
+            instance?.let { it.pauseLabels = it.installedPauseApps() }
         }
 
         /** What Settings says, which can be "on" while the service isn't running. */

@@ -552,6 +552,7 @@ class MainActivity : Activity() {
                 val installed = apps.map { it.first }.toSet()
                 val chosen = apps.filterIndexed { index, _ -> checked[index] }.map { it.first }
                 store.pauseApps = (paused - installed) + chosen // keep known apps that aren't installed yet
+                CopyWatcher.pauseAppsChanged()
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -583,12 +584,27 @@ class MainActivity : Activity() {
         }
         if (!expanded) return
 
-        check("Automatic copy to ${mac.name}", watching, "Turn on") { openAccessibilitySettings() }
-        when {
-            watching -> switch("Also check after menus close (catches Copy inside menus)", store.thoroughCopy) {
-                store.thoroughCopy = it
-                CopyWatcher.setThorough(it)
+        val selfManage = SelfManage(this, store)
+        if (selfManage.available) {
+            switch("Automatic copy to ${mac.name}", store.autoCopyWanted) { wanted ->
+                store.autoCopyWanted = wanted
+                if (wanted) selfManage.enable() else CopyWatcher.instance?.disableSelf()
             }
+            text("Set up from your Mac: it turns itself back on after payment apps close. If the phone ever stops Copier, opening Copier is enough.")
+        } else {
+            check("Automatic copy to ${mac.name}", watching, "Turn on") { openAccessibilitySettings() }
+        }
+        when {
+            watching -> {
+                switch("Also check after menus close (for phones that don't announce copies)", store.thoroughCopy) {
+                    store.thoroughCopy = it
+                    CopyWatcher.setThorough(it)
+                }
+                if (!selfManage.available) {
+                    text("It pauses for payment apps and you turn it back on afterwards. To make it come back by itself: on your Mac, Copier menu → Advanced → Self-Managing Automatic Copy (a one-time USB setup).")
+                }
+            }
+            selfManage.available -> Unit
             CopyWatcher.enabledInSettings(this) ->
                 text("Android stopped it even though Accessibility shows it as on. Turn “Copier — send copies to Mac” off and on again. To keep it running, lock Copier in the recent-apps screen.")
             store.pausedFor != null ->

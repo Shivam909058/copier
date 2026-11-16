@@ -119,7 +119,7 @@ The phone tries each host in `h`, then Bonjour. Port 47475 is only open while Ad
 | `clip` | both | `id` (optional), `sensitive` (bool), `htmlBytes` (int, optional) | `html bytes (htmlBytes) ‖ UTF-8 plain text` |
 | `ack` | both | `id` | — |
 | `offer` | Mac → phone | `id`, `name`, `size`, `mime`, `purpose`, `sensitive` | — |
-| `status` | phone → Mac | `battery` (0–100), `charging` (bool), `watcher` (bool), `msg` (optional) | — |
+| `status` | phone → Mac | `battery` (0–100), `charging` (bool), `watcher` (bool), `msg` (optional), `managed` (optional bool) | — |
 | `diag` | phone → Mac | `text` | — |
 | `diagnose` | Mac → phone | `time` (seconds) | — |
 | `bye` | both | — | — |
@@ -143,7 +143,8 @@ The phone tries each host in `h`, then Bonjour. Port 47475 is only open while Ad
   sender shows as delivered ("On Mac ✓" / "On phone ✓"). Clips without an `id` get no ack.
 - The phone sends `status` right after `auth-ok`, then whenever the battery level, charging state or
   automatic-copy state changes. `watcher` says whether the phone's automatic-copy service is really
-  running; when it isn't, `msg` may say why ("paused for Google Pay").
+  running; when it isn't, `msg` may say why ("paused for Google Pay"). `managed` is true when the
+  phone can turn that service back on by itself (the optional USB setup), so a pause is temporary.
 - `diag` carries one diagnostic line from the phone's copy detector for the Mac's log. It may name
   an app and the label of a tapped control (24 characters at most); it never carries clipboard
   contents. Outside a `diagnose` window the phone only sends failures. `diagnose` asks the phone

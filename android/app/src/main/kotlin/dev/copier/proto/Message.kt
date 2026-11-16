@@ -46,6 +46,8 @@ class Header(
     val url: String? = null,
     /** `status`: whether the phone's automatic-copy service is running. */
     val watcher: Boolean? = null,
+    /** `status`: the phone can turn automatic copy back on by itself. */
+    val managed: Boolean? = null,
 ) {
     fun toJson(): ByteArray {
         val o = JSONObject().put("t", t)
@@ -81,6 +83,7 @@ class Header(
         index?.let { o.put("index", it) }
         url?.let { o.put("url", it) }
         watcher?.let { o.put("watcher", it) }
+        managed?.let { o.put("managed", it) }
         return o.toString().toByteArray(Charsets.UTF_8)
     }
 
@@ -122,6 +125,7 @@ class Header(
                     index = o.opt("index")?.let { o.getInt("index") },
                     url = o.str("url"),
                     watcher = o.opt("watcher")?.let { o.getBoolean("watcher") },
+                    managed = o.opt("managed")?.let { o.getBoolean("managed") },
                 )
             } catch (e: JSONException) {
                 throw ProtoException("malformed header JSON", e)

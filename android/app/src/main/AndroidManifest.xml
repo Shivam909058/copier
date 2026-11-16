@@ -20,6 +20,14 @@
     <!-- Optional automatic phone → Mac clipboard: only active if granted out of band (adb);
          never part of the normal setup. Without them the tile/notification/share paths are used. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Self-managing automatic copy (SelfManage.kt): granted once from the Mac over adb, never on
+         the phone. Lets Copier turn its own accessibility service back on after payment apps. -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission
         android:name="android.permission.READ_LOGS"
         tools:ignore="ProtectedPermissions" />

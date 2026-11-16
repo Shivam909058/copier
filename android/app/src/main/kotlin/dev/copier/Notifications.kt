@@ -82,17 +82,18 @@ object Notifications {
     }
 
     /** Automatic copy stepped aside for a payment app; tapping leads to where it's turned back on. */
-    fun paused(context: Context, appName: String) {
+    fun paused(context: Context, appName: String, comesBackByItself: Boolean) {
         if (!allowed(context)) return
         val settings = PendingIntent.getActivity(
             context, 3, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE,
         )
+        val after = if (comesBackByItself) "It turns back on by itself when you leave $appName." else "Tap here afterwards to turn automatic copy back on."
         val detail = "$appName won't open while Copier's accessibility is on, so Copier turned it off. " +
-            "If $appName still complains, close it and open it again. Tap here afterwards to turn automatic copy back on."
+            "If $appName still complains, close it and open it again. $after"
         val notification = Notification.Builder(context, CHANNEL_TRANSFERS)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("Automatic copy paused for $appName")
-            .setContentText("Tap here afterwards to turn it back on.")
+            .setContentText(after)
             .setStyle(Notification.BigTextStyle().bigText(detail))
             .setContentIntent(settings)
             .build()

@@ -106,3 +106,20 @@ class CopyDetectorTest {
         assertTrue(d.onSignal(signal(Kind.CLICK, "Copy")) is Decision.Check)
     }
 }
+
+class ResumeRuleTest {
+    private val payments = setOf("com.google.android.apps.nbu.paisa.user", "com.phonepe.app")
+
+    @Test
+    fun staysPausedWhileAPaymentAppIsInFront() {
+        assertFalse(ResumeRule.mayResume("com.google.android.apps.nbu.paisa.user", payments))
+        assertFalse(ResumeRule.mayResume("com.phonepe.app", payments))
+    }
+
+    @Test
+    fun resumesOnceTheUserIsElsewhere() {
+        assertTrue(ResumeRule.mayResume("com.android.launcher", payments))
+        assertTrue(ResumeRule.mayResume("com.whatsapp", payments))
+        assertTrue("unknown foreground counts as having left", ResumeRule.mayResume(null, payments))
+    }
+}
