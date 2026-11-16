@@ -10,12 +10,17 @@
 # your phone. Downloads made by curl aren't quarantined, so macOS opens the self-signed app
 # without a Gatekeeper prompt.
 #
+# The `copier` command is linked into the first of /opt/homebrew/bin, /usr/local/bin or ~/.local/bin
+# that can be written without sudo. Only when that folder isn't on your PATH yet (a Mac without
+# Homebrew), one marked line is added to ~/.zshrc; --uninstall removes it again.
+#
 # Options (environment): COPIER_APPS_DIR=<folder> installs elsewhere; COPIER_NO_OPEN=1 doesn't
-# launch it; COPIER_NO_CLI=1 doesn't link the `copier` command.
+# launch it; COPIER_NO_CLI=1 doesn't link the `copier` command or touch your PATH.
 set -euo pipefail
 
 REPO="Shivam909058/copier"
 BUNDLE_ID="dev.copier.mac"
+PATH_MARK="Added by the Copier installer"
 
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
@@ -40,13 +45,17 @@ uninstall() {
         link="$dir/copier"
         if [[ -L "$link" && "$(readlink "$link")" == *Copier.app* ]]; then rm -f "$link" && note "removed $link"; fi
     done
+    for rc in "$HOME/.zshrc" "$HOME/.bash_profile"; do
+        if grep -qs "$PATH_MARK" "$rc"; then
+            grep -v "$PATH_MARK" "$rc" > "$rc.copier-tmp" || true
+            cat "$rc.copier-tmp" > "$rc"  # cat, not mv: keeps a symlinked dotfile a symlink
+            rm -f "$rc.copier-tmp"
+            note "removed the PATH line from $rc"
+        fi
+    done
     bold "Copier is uninstalled."
     note "History and settings stay in ~/Library/Application Support/Copier; delete that folder to forget everything."
     note "On the phone, uninstall the Copier app like any other app."
-}
-
-asset_url() { # $1 = release JSON, $2 = filename suffix
-    printf '%s' "$1" | grep -o "\"browser_download_url\": *\"[^\"]*$2\"" | head -1 | sed -E 's/.*"(https[^"]*)"/\1/'
 }
 
 main() {
@@ -60,21 +69,29 @@ main() {
 
     local tmp
     tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
+    trap "rm -rf '$tmp'" EXIT  # expanded now: \$tmp is gone by the time the trap runs
 
     bold "Finding the latest Copier release…"
-    local release zip_url sums_url zip_name
-    release="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest")" || die "couldn't reach GitHub. Check your internet connection."
-    zip_url="$(asset_url "$release" "-macOS.zip")"
-    sums_url="$(asset_url "$release" "SHA256SUMS")"
-    [[ -n "$zip_url" && -n "$sums_url" ]] || die "the latest release has no Mac build yet. Try again in a few minutes."
-    zip_name="$(basename "$zip_url")"
+    # The "latest" page redirects to the newest tag. Unlike api.github.com it isn't capped at 60
+    # requests an hour per network, which shared office and college Wi-Fi runs out of.
+    local latest tag zip_name base
+    latest="$(curl -fsSL --retry 3 -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")" \
+        || die "couldn't reach GitHub. Check your internet connection."
+    tag="${latest##*/}"
+    [[ "$tag" == v[0-9]* ]] || die "couldn't find a Copier release. Try again in a few minutes."
+    zip_name="Copier-${tag#v}-macOS.zip"
+    base="https://github.com/$REPO/releases/download/$tag"
 
     bold "Downloading ${zip_name}…"
-    curl -fL --progress-bar -o "$tmp/$zip_name" "$zip_url"
-    curl -fsSL -o "$tmp/SHA256SUMS" "$sums_url"
+    curl -fL --retry 3 --progress-bar -o "$tmp/$zip_name" "$base/$zip_name" \
+        || die "the download failed. Check your internet connection and run the installer again."
+    curl -fsSL --retry 3 -o "$tmp/SHA256SUMS" "$base/SHA256SUMS" \
+        || die "the download failed. Check your internet connection and run the installer again."
     (cd "$tmp" && grep " $zip_name\$" SHA256SUMS | shasum -a 256 -c - >/dev/null) \
         || die "the download doesn't match its checksum, so it wasn't installed. Run the installer again."
+    # Unpack and check before touching an installed copy, so a bad download never leaves you without one.
+    ditto -x -k "$tmp/$zip_name" "$tmp/unpacked"
+    is_copier "$tmp/unpacked/Copier.app" || die "the downloaded archive didn't contain Copier.app."
 
     local apps="${COPIER_APPS_DIR:-/Applications}"
     if [[ -z "${COPIER_APPS_DIR:-}" && ! -w "$apps" ]]; then apps="$HOME/Applications"; fi
@@ -85,20 +102,34 @@ main() {
         quit_copier  # only when replacing an installed copy
         rm -rf "$app"
     fi
-    ditto -x -k "$tmp/$zip_name" "$apps"
+    ditto "$tmp/unpacked/Copier.app" "$app"
     xattr -dr com.apple.quarantine "$app" 2>/dev/null || true  # curl doesn't add it; belt and braces
-    is_copier "$app" || die "the downloaded archive didn't contain Copier.app."
 
-    local cli=""
+    local cli="" new_path=""
     for dir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
         [[ "${COPIER_NO_CLI:-0}" == 1 ]] && break
+        # The last resort always works: no sudo, and no Homebrew needed.
+        if [[ "$dir" == "$HOME/.local/bin" ]]; then mkdir -p "$dir" 2>/dev/null || true; fi
         [[ -d "$dir" && -w "$dir" ]] || continue
         local link="$dir/copier"
         if [[ -e "$link" && ! ( -L "$link" && "$(readlink "$link")" == *Copier.app* ) ]]; then continue; fi
         ln -sf "$app/Contents/MacOS/copier-cli" "$link"
         cli="$link"
+        if [[ ":$PATH:" != *":$dir:"* ]]; then
+            local rc="$HOME/.zshrc"
+            if [[ "${SHELL:-}" == */bash ]]; then rc="$HOME/.bash_profile"; fi
+            grep -qs "$PATH_MARK" "$rc" || printf '\nexport PATH="%s:$PATH"  # %s\n' "$dir" "$PATH_MARK" >> "$rc"
+            new_path="$dir"
+        fi
         break
     done
+
+    # Another tool with the same name (the Python project templater, for one) may come first on PATH.
+    local first=""
+    first="$(command -v copier 2>/dev/null || true)"
+    if [[ -n "$cli" && -z "$new_path" && -n "$first" && "$first" != "$cli" && "$(readlink "$first" 2>/dev/null)" != *Copier.app* ]]; then
+        cli=""
+    fi
 
     [[ "${COPIER_NO_OPEN:-0}" == 1 ]] || open "$app"
     bold "✓ Copier $(defaults read "$app/Contents/Info.plist" CFBundleShortVersionString) is installed in $apps."
@@ -106,10 +137,14 @@ main() {
     note "Next, on your phone: scan the QR code Copier just opened, tap “Install Copier”, then “Open Copier to pair”."
     note "Phone install blocked? Turn off Play Protect for a minute (Play Store → profile → Play Protect → ⚙)."
     note "When macOS asks, allow Copier to paste from other apps (Always Allow) and to send notifications."
-    if [[ -n "$cli" ]]; then
+    if [[ -n "$new_path" ]]; then
+        note "Terminal: open a NEW Terminal window, then \`copier start\` brings everything up and \`copier doctor\` checks every link."
+        note "(The command is in $new_path, which was just added to your PATH. In this window, run: export PATH=\"$new_path:\$PATH\")"
+    elif [[ -n "$cli" ]]; then
         note "Terminal: \`copier start\` brings everything up, \`copier doctor\` checks every link."
     else
-        note "To use the \`copier\` command, link it: ln -s \"$app/Contents/MacOS/copier-cli\" /usr/local/bin/copier"
+        note "The \`copier\` command isn't on your PATH (or another tool named copier comes first). Use the full path:"
+        note "  \"$app/Contents/MacOS/copier-cli\" doctor"
     fi
 }
 
