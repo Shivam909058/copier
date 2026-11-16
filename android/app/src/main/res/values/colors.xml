@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="launcher_background">#3D5AFE</color>
+    <!-- Relay tokens (docs/superpowers/specs/2026-11-16-relay-interface-design.md). -->
+    <color name="accent">#3346A8</color>
+    <color name="outgoing_tint">#143346A8</color> <!-- accent at 8 % -->
+    <color name="incoming_fill">#EFF0F4</color>
+    <color name="hairline">#D9DCE5</color>
+    <color name="delivered">#1E8E3E</color>
+    <color name="failed">#D93025</color>
+    <color name="idle_dot">#9AA0AE</color>
+    <color name="on_accent">#FFFFFF</color>
+</resources>

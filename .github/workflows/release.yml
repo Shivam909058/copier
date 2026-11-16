@@ -1,0 +1,86 @@
+name: Release
+
+# Push a tag like v0.3.1 to build, sign and publish both apps. The Mac app embeds the Android APK
+# (it serves it to the phone through the QR code), so they're built and released together.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version number
+        run: echo "VERSION=${VERSION#v}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Android release key
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          echo "$ANDROID_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/copier-release.jks"
+          echo "COPIER_KEYSTORE=$RUNNER_TEMP/copier-release.jks" >> "$GITHUB_ENV"
+
+      - name: Build and test Android
+        working-directory: android
+        env:
+          COPIER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: ./gradlew --no-daemon test assembleRelease "-PcopierVersion=$VERSION"
+
+      - name: Test Mac
+        working-directory: mac
+        run: swift test
+
+      - name: Mac signing keychain
+        env:
+          MAC_SIGNING_P12_B64: ${{ secrets.MAC_SIGNING_P12_B64 }}
+          MAC_SIGNING_P12_PASSWORD: ${{ secrets.MAC_SIGNING_P12_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/sign.keychain-db"
+          password="$(openssl rand -hex 16)"
+          echo "$MAC_SIGNING_P12_B64" | base64 --decode > "$RUNNER_TEMP/sign.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/sign.p12" -k "$keychain" -P "$MAC_SIGNING_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          # The certificate is self-signed; codesign only uses identities it trusts, so trust it on this
+          # throwaway runner. Users' Macs never need to (the installer avoids Gatekeeper quarantine).
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain mac/signing/copier-code-signing.pem
+          echo "COPIER_SIGN_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Build Mac app
+        working-directory: mac
+        env:
+          COPIER_VERSION: ${{ env.VERSION }}
+          COPIER_SIGN_IDENTITY: Copier Code Signing
+          COPIER_UNIVERSAL: "1"
+        run: ./scripts/build-app.sh
+
+      - name: Package
+        run: |
+          mkdir dist
+          ditto -c -k --keepParent mac/build/Copier.app "dist/Copier-$VERSION-macOS.zip"
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/Copier-$VERSION-android.apk"
+          (cd dist && shasum -a 256 * > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Copier $VERSION" --generate-notes \
+            --notes "Install or update on the Mac: \`curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash\` — the phone app installs from the QR code Copier shows."

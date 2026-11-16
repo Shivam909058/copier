@@ -1,0 +1,26 @@
+# macOS / Swift
+.DS_Store
+mac/.build/
+mac/build/
+*.xcodeproj/xcuserdata/
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.kotlin/
+*.keystore
+*.jks
+
+# Signing material never lives in the repo (it's in ~/.copier-signing and GitHub secrets)
+*.p12
+*.pem
+!mac/signing/copier-code-signing.pem
+.copier-signing/
+
+# Release packaging
+dist/
+
+# Editor state
+.vscode/

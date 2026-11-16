@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Copier</string>
+    <string name="share_label">Send to Mac</string>
+    <string name="open_on_mac_label">Open on Mac</string>
+    <string name="tile_label">Send clipboard</string>
+    <string name="copy_watcher_label">Copier — send copies to Mac</string>
+    <string name="copy_watcher_description">Sends whatever you copy on this phone to your Mac automatically. Copier only notices taps on “Copy” buttons; it can\'t read your screen.</string>
+    <string name="notif_listener_label">Copier — notifications on Mac</string>
+</resources>
