@@ -10,10 +10,12 @@ Setup is one terminal line on the Mac and one QR scan on the phone.
 curl -fsSL https://raw.githubusercontent.com/Shivam909058/copier/main/install.sh | bash
 ```
 
-**Using an AI coding agent?** Give it this repository's link and say *"set up Copier"*. Claude Code,
-Codex, Cursor and similar agents follow [AGENTS.md](AGENTS.md): they install the Mac app, walk you
-through the few taps only you can do, wait for your phone to connect, test both directions, and fix
-what's broken. In Claude Code you can also run `/setup-copier` inside the repo.
+**Using an AI coding agent?** Give it this repository's link (or open a clone of it) and say
+*"set up Copier"*. Claude Code, Codex, Cursor and similar agents follow [AGENTS.md](AGENTS.md):
+they install or update the Mac app, walk you through the few taps only you can do, wait for your
+phone to connect, test both directions, and fix what's broken. The same file covers the optional
+USB setup and running a build from source. Claude Code loads it by itself through
+[CLAUDE.md](CLAUDE.md); you can also run `/setup-copier` inside the repo.
 
 ---
 
@@ -21,6 +23,7 @@ what's broken. In Claude Code you can also run `/setup-copier` inside the repo.
 
 - [Features](#features)
 - [Install](#install)
+- [Update](#update)
 - [First-run checklist](#first-run-checklist)
 - [Everyday use](#everyday-use)
 - [The `copier` command](#the-copier-command)
@@ -53,7 +56,8 @@ what's broken. In Claude Code you can also run `/setup-copier` inside the repo.
 ### Phone → Mac
 
 - **Tap Copy anywhere** and it's on the Mac's clipboard. Nothing else to press (see
-  [how](#how-zero-tap-copy-works)). It steps aside for payment apps, which refuse to run next to it
+  [how](#how-zero-tap-copy-works)). It steps aside for payment apps, which refuse to run next to it,
+  and after a one-time USB setup it comes back by itself
   (see [payment and banking apps](#payment-and-banking-apps)).
 - **"Copy image"** puts the image on the Mac's clipboard.
 - **Take a screenshot** and it's on the Mac's clipboard (⌘V) and in Downloads instantly.
@@ -77,7 +81,8 @@ what's broken. In Claude Code you can also run `/setup-copier` inside the repo.
 - **Arrival panel** on the Mac: photos, files, screenshots and codes pop up with **Open** / **Show in
   Finder**, even when notifications are off.
 - **Menu bar:** status, battery, the last five items (one click to copy or open), quick actions.
-- **`copier` in the terminal:** `start`, `doctor`, `qr`, `send`, `copy`, `paste`, `open`, `ring`.
+- **`copier` in the terminal:** `start`, `doctor`, `diagnose`, `qr`, `send`, `copy`, `paste`, `open`,
+  `ring`, `usb-setup`.
 - **Fallbacks:** a Quick Settings tile and a notification button send the phone's clipboard with one tap.
 
 ---
@@ -95,6 +100,8 @@ curl -fsSL https://raw.githubusercontent.com/Shivam909058/copier/main/install.sh
 
 This downloads the latest release, verifies its checksum, installs **Copier.app**, links the
 `copier` command and opens Copier. With no phone paired yet, the **Add Phone** window opens with a QR code.
+It needs no `sudo` and no Homebrew. When macOS asks, allow Copier to use the **local network** and
+to **accept incoming connections**: that is how the phone reaches it.
 
 ### 2. Phone (one scan)
 
@@ -108,6 +115,41 @@ This downloads the latest release, verifies its checksum, installs **Copier.app*
 5. Turn Play Protect back on.
 
 Lost the QR window? Menu bar → **Add Phone…**, or `copier qr` (prints it in the terminal too).
+
+### 3. Optional: the one-time USB setup
+
+Everything above works without a cable. With one, a single command does two more things:
+
+- it installs or updates the phone app straight from the Mac, without the browser download that
+  Play Protect blocks;
+- it lets automatic copy **turn itself back on** after you use Google Pay, PhonePe or a bank app
+  (see [payment and banking apps](#payment-and-banking-apps)). Without it, you turn it back on by
+  hand each time.
+
+It takes about three minutes, once (again only if you reinstall the phone app):
+
+1. Phone: Settings → About device → tap **Build number** seven times (on some phones it's under
+   *Version*). Then Developer options → **USB debugging** on. On Realme, OPPO and OnePlus also turn
+   on **Disable permission monitoring**; on Xiaomi, **USB debugging (Security settings)**.
+2. Connect the phone to the Mac with a data cable, unlock it and tap **Allow**.
+3. Mac: run `copier usb-setup` (or menu-bar icon → Advanced → *Self-Managing Automatic Copy*). It
+   fetches Android's `adb` tool from Google by itself if the Mac doesn't have it, and prints a ✓ or
+   ✗ for each step with what to do about a ✗.
+4. Turn USB debugging off again and unplug. Some bank apps refuse to run while it's on; what the
+   command set up stays.
+
+If the phone wasn't paired yet, scan the QR afterwards and tap **2 · Open Copier to pair**.
+
+---
+
+## Update
+
+1. Mac: run the install line again. It replaces the app and keeps your pairing, history and
+   permissions.
+2. Phone: the Mac app carries the matching phone app. `copier qr` → Play Protect off → scan →
+   **1 · Install Copier** → **Update** → Play Protect back on. With a cable and USB debugging on,
+   `copier usb-setup` does it in one step instead.
+3. `copier doctor` should end with **All good.**
 
 ---
 
@@ -150,13 +192,17 @@ Received files go to `~/Downloads` on the Mac and `Download/Copier` on the phone
 
 ## The `copier` command
 
-Installed by the installer (or menu → Advanced → *Install Command-Line Tool*).
+Installed by the installer (or menu → Advanced → *Install Command-Line Tool*) into
+`/opt/homebrew/bin`, `/usr/local/bin` or `~/.local/bin`. If the shell says `command not found`, open
+a new Terminal window; if another program called `copier` answers instead, use the full path:
+`/Applications/Copier.app/Contents/MacOS/copier-cli`.
 
 | Command | What it does |
 |---|---|
 | `copier start` | Brings everything up: launches Copier, refreshes the network announcement, waits for the phone, and prints a QR to re-pair if it doesn't connect. `--restart` restarts the app first. **Run this whenever something seems stuck.** |
 | `copier doctor` | Checks each link in the chain, including whether automatic copy is really running on the phone, and tells you the fix for anything broken. |
 | `copier diagnose [seconds]` | Shows live what the phone's copy detector sees while you copy (button names and "copied" messages, never contents). The first thing to run when a copy doesn't arrive. |
+| `copier usb-setup` | Optional, once, over a USB cable: installs or updates the phone app and lets automatic copy turn itself back on after payment apps. See [the one-time USB setup](#3-optional-the-one-time-usb-setup). |
 | `copier selftest` | Guided check of the code popup, Mac → phone and phone → Mac copy. |
 | `copier qr` | Shows the pairing QR in the terminal and on screen. |
 | `copier status [--json]` | Phone, connection and battery. |
@@ -241,9 +287,19 @@ your clipboard" each time; that's expected.
 
 Google Pay, PhonePe, Paytm and most bank apps **refuse to open while any app installed outside the
 Play Store has an accessibility service on**. That is a Play Integrity rule; no app can hide from it.
-So Copier steps aside: the moment one of those apps opens, it turns its own automatic copy off and
-posts a notification. Android doesn't let an app turn its own accessibility service back on, so tap
-that notification afterwards (Accessibility → *Copier — send copies to Mac* → On).
+So Copier steps aside: the moment one of those apps opens (or you tap its icon), it turns its own
+automatic copy off and posts a notification. What happens next depends on one optional step:
+
+- **Without it:** Android doesn't let an app turn its own accessibility service back on, so tap
+  the notification afterwards (Accessibility → *Copier — send copies to Mac* → On).
+- **With [the one-time USB setup](#3-optional-the-one-time-usb-setup):** a few seconds after you
+  leave the payment app, automatic copy turns itself back on. Nothing to tap, ever.
+
+`copier usb-setup` updates the phone app over the cable and grants two permissions Android only gives
+out from a computer: changing secure settings, which Copier uses for exactly one thing, its own
+entry in the list of enabled accessibility services, and usage access, which it uses to see that
+the payment app is no longer in front. The switch for automatic copy then lives in the Copier app
+on the phone; turning it off there, or in Android's Accessibility settings, keeps it off.
 
 - The list of apps is editable: phone app → **⋮ → Pause for payment apps…**.
 - While it's paused, everything else keeps working, and *Send to Mac* in the text-selection menu or
@@ -263,9 +319,14 @@ Start with **`copier doctor`** on the Mac: it checks everything below and prints
 | Phone: **"App can't be installed"** / "App blocked to protect your device" | Play Protect blocks browser-installed apps that use Accessibility or notification access | Turn off Play Protect while installing (Play Store → profile → Play Protect → ⚙), install, turn it back on. Needed for each update. |
 | Phone: **"App was denied access"**, Accessibility toggle greyed out | Android's *restricted settings* for sideloaded apps | Settings → Apps → Copier → **⋮** (top right) → **Allow restricted settings**, then turn the toggle on. |
 | Phone: copying does nothing on the Mac | Automatic copy isn't running: it was paused for a payment app, or the phone force-stopped Copier (which silently switches Accessibility off, sometimes while Settings still shows it on) | `copier doctor` says which. On the phone: Copier → **Automatic copy** → Turn on (off and on again if it already looks on). Lock Copier in recents. Still nothing? `copier diagnose`, then copy, and read what it prints. |
-| Google Pay / PhonePe / a bank app won't open, or complains about accessibility | They refuse to run next to any sideloaded accessibility service | Copier turns its automatic copy off when one of them opens; if the app still complains, close it and open it again. Add other apps in ⋮ → **Pause for payment apps…**. Turn automatic copy back on from the notification. |
+| Google Pay / PhonePe / a bank app won't open, or complains about accessibility | They refuse to run next to any sideloaded accessibility service | Copier turns its automatic copy off when one of them opens; if the app still complains, close it and open it again. Add other apps in ⋮ → **Pause for payment apps…**. Turn automatic copy back on from the notification, or run `copier usb-setup` once so it comes back by itself. |
+| A bank app complains about developer options or USB debugging | USB debugging was left on after the USB setup | Turn it off in Developer options. What `copier usb-setup` set up stays. |
+| `copier usb-setup` says **No phone found** | USB debugging is off, the phone is locked, or the cable only charges | Check step 1 of [the USB setup](#3-optional-the-one-time-usb-setup), unlock the phone, try another cable or port. |
+| `copier usb-setup` says **The phone refused** | The phone's vendor blocks permission changes over USB | Developer options → **Disable permission monitoring** (Realme, OPPO, OnePlus) or **USB debugging (Security settings)** (Xiaomi), then run it again. |
 | Phone stops syncing after a while | The phone's battery manager stopped Copier | Settings → Apps → Copier → Battery → **Allow background activity** + **Auto launch**; turn battery optimization off. |
 | QR page doesn't open on the phone | Not on the same network, or Wi-Fi isolates devices (common in offices, colleges, hotels) | Join the Mac to the phone's hotspot, then `copier qr` (a fresh QR with the new address). |
+| Same Wi-Fi, but the phone still can't reach the Mac | The macOS Firewall, a VPN, or local-network access was declined | System Settings → Network → Firewall → Options… → Copier → **Allow incoming connections** (and *Block all incoming connections* off). Pause any VPN on the Mac or phone. System Settings → Privacy & Security → **Local Network** → Copier → on. Then `copier start`. |
+| `copier: command not found`, or `copier` does something unrelated | The command's folder isn't on this terminal's PATH yet, or another program has the same name | Open a new Terminal window. Otherwise use `/Applications/Copier.app/Contents/MacOS/copier-cli`, or menu → Advanced → *Install Command-Line Tool*. |
 | Mac: copying stopped reaching the phone | macOS paste privacy is set to *Ask* | System Settings → Privacy & Security → **Paste from Other Apps** → Copier → **Always Allow**. |
 | Mac: no alert when a file arrives | macOS notifications are off for Copier | System Settings → Notifications → Copier → Allow. The arrival panel still shows either way. |
 | Chrome: "this file can't be downloaded securely" | The APK comes over plain HTTP from your Mac | Tap **Keep**. Do the install on a network you trust. |
@@ -300,29 +361,55 @@ Use `/usr/bin/log`: zsh has a built-in `log` command that hides the real one.
 - **The install page** (HTTP, port 47475) runs only while Add Phone is open, and serves nothing secret.
   The APK download itself is plain HTTP on your network, so install on a network you trust.
 - **The Accessibility service** gets the label of a button you tap and the text of short "copied"
-  messages, never the screen. It turns itself off when a payment or banking app opens.
+  messages, never the screen. It turns itself off when a payment or banking app opens. With the
+  optional USB setup, Copier can also write Android's secure settings and see which app is in
+  front; it uses that only to turn this service back on after a payment app closes.
 
 ---
 
 ## Build from source
 
-Requirements: Xcode 16+, JDK 21+, Android SDK (platform 36, build-tools 36).
+Requirements: Xcode 16+, JDK 21 to 25, Android SDK (platform 36, build-tools 36). With Homebrew:
+
+```sh
+brew install openjdk@21 && brew install --cask android-commandlinetools
+export JAVA_HOME="$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home"
+export ANDROID_HOME="$(brew --prefix)/share/android-commandlinetools"
+yes | sdkmanager --licenses >/dev/null && sdkmanager "platforms;android-36" "build-tools;36.0.0"
+```
+
+Build the phone app first; the Mac app carries it:
 
 ```sh
 # Android (signed with your debug key unless COPIER_KEYSTORE is set)
 cd android && ./gradlew test assembleRelease
 
 # Mac: builds Copier.app with the APK above inside, signed with your Apple Development identity
+# (ad-hoc when you have none)
 cd ../mac && swift test && ./scripts/build-app.sh
-open build/Copier.app
+
+# Put it in place of the installed app
+osascript -e 'quit app "Copier"'; ditto build/Copier.app /Applications/Copier.app && open -g /Applications/Copier.app
 ```
+
+Two things to know before you swap a release for your own build:
+
+- macOS treats a differently signed build as a different app, so it asks for the clipboard and
+  notification permissions again.
+- Your phone app is signed with your debug key. A phone that has the released app can't update to
+  it: uninstall Copier on the phone, install from `copier qr` (or `copier usb-setup`) and pair again.
 
 More tests:
 
 ```sh
 cd mac && COPIER_INTEROP=1 swift test --filter Interop          # Kotlin client ⇄ Swift server
 cd mac && COPIER_SNAPSHOT=/tmp/relay.png swift test --filter Snapshot   # renders the window to a PNG
+cd mac && COPIER_ADB_DOWNLOAD=1 swift test --filter PhoneSetup  # the adb download used by usb-setup
 ```
+
+Every push and pull request runs the builds and tests on GitHub Actions
+([ci.yml](.github/workflows/ci.yml)). Phone-side behaviour (accessibility events, clipboard reads,
+payment apps) can't be proven there: try it on a real phone.
 
 `testvectors/v1.json` pins every crypto output; regenerate it only for an intentional protocol change:
 `cd mac && COPIER_RECORD_VECTORS=1 swift test`.
@@ -334,10 +421,11 @@ Layout: `mac/` (SwiftPM: `CopierCore` protocol library, `Copier` app, `copier-cl
 
 ## Releasing
 
-Push a version tag; GitHub Actions builds, tests, signs and publishes both apps:
+Bump the default version in `android/app/build.gradle.kts`, wait for CI to pass on `main`, then
+push a version tag; GitHub Actions builds, tests, signs and publishes both apps:
 
 ```sh
-git tag v0.3.1 && git push origin v0.3.1
+git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 The release contains `Copier-<version>-macOS.zip` (universal, with the APK inside),
