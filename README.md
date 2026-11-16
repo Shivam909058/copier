@@ -53,7 +53,8 @@ what's broken. In Claude Code you can also run `/setup-copier` inside the repo.
 ### Phone → Mac
 
 - **Tap Copy anywhere** and it's on the Mac's clipboard. Nothing else to press (see
-  [how](#how-zero-tap-copy-works)).
+  [how](#how-zero-tap-copy-works)). It steps aside for payment apps, which refuse to run next to it
+  (see [payment and banking apps](#payment-and-banking-apps)).
 - **"Copy image"** puts the image on the Mac's clipboard.
 - **Take a screenshot** and it's on the Mac's clipboard (⌘V) and in Downloads instantly.
 - **Share → Send to *your Mac*** (top row of the share sheet): photos and files, many at once, any size.
@@ -122,7 +123,8 @@ side and collapses to *Setup ✓* when done.
 | Mac | Allow access to **Downloads** | Received files are saved there. |
 | Phone | Notifications → **Allow** | The connection notification and "received" alerts. |
 | Phone | Battery → **Allow background activity** and **Auto launch** (Realme, OPPO, OnePlus, Xiaomi, Vivo) | These phones stop background apps, which stops sync. |
-| Phone | Accessibility → **Copier — send copies to Mac** → On | Makes phone → Mac copy automatic. If it's greyed out: App info → ⋮ → **Allow restricted settings**, then try again. |
+| Phone | Accessibility → **Copier — send copies to Mac** → On | Makes phone → Mac copy automatic. If it's greyed out: App info → ⋮ → **Allow restricted settings**, then try again. Optional: without it, use *Send to Mac* in the text-selection menu, the tile, or Share. |
+| Phone | Lock Copier in the recent-apps screen | Stops Realme/OPPO/Xiaomi "clean up" from force-stopping it, which also switches automatic copy off. |
 | Phone | **Notifications on Mac** (Notification access) → Copier → On | Mirrors notifications and calls to the Mac. |
 | Phone | Photos → **Allow all** | Sends screenshots to the Mac automatically. ("Select photos" isn't enough.) |
 
@@ -153,7 +155,9 @@ Installed by the installer (or menu → Advanced → *Install Command-Line Tool*
 | Command | What it does |
 |---|---|
 | `copier start` | Brings everything up: launches Copier, refreshes the network announcement, waits for the phone, and prints a QR to re-pair if it doesn't connect. `--restart` restarts the app first. **Run this whenever something seems stuck.** |
-| `copier doctor` | Checks each link in the chain and tells you the fix for anything broken. |
+| `copier doctor` | Checks each link in the chain, including whether automatic copy is really running on the phone, and tells you the fix for anything broken. |
+| `copier diagnose [seconds]` | Shows live what the phone's copy detector sees while you copy (button names and "copied" messages, never contents). The first thing to run when a copy doesn't arrive. |
+| `copier selftest` | Guided check of the code popup, Mac → phone and phone → Mac copy. |
 | `copier qr` | Shows the pairing QR in the terminal and on screen. |
 | `copier status [--json]` | Phone, connection and battery. |
 | `copier send <file>…` | Sends files to the phone. |
@@ -219,11 +223,33 @@ the phone's real networking code against the real Mac server.
 
 ### How zero-tap copy works
 
-Since Android 10, apps can't read the clipboard in the background. Copier's Accessibility service
-watches only for taps on controls labelled **Copy** (the text-selection toolbar, WhatsApp's copy icon,
-"Copy link", "Copy image"…). It can't read the screen: `canRetrieveWindowContent` is off. On such a
-tap, a 1-pixel invisible window takes focus for a split second, reads the clipboard, and sends it.
-Android may show "Copier pasted from your clipboard" each time; that's expected.
+Since Android 10, only the app in focus may read the clipboard, and nothing tells a background app
+that something was copied. Copier's Accessibility service therefore looks for the traces a copy leaves:
+
+- a tap on a control labelled **Copy…** (Android only delivers this when the control stays on screen,
+  so it works for toolbars but not for menus, which close inside the tap);
+- Android 13+'s own **"Text copied"** announcement and apps' **"Copied"** messages;
+- a **menu or dialog closing**, which is what follows a Copy inside a menu.
+
+After any of these, a 1-pixel invisible window takes focus for a split second and reads the clipboard
+(falling back to an invisible screen on phones that refuse the overlay). A clip is sent once, and only
+if it is new. The service can't read the screen: `canRetrieveWindowContent` is off, so it only gets
+the label of a tapped button or the text of a short message. Android may show "Copier pasted from
+your clipboard" each time; that's expected.
+
+### Payment and banking apps
+
+Google Pay, PhonePe, Paytm and most bank apps **refuse to open while any app installed outside the
+Play Store has an accessibility service on**. That is a Play Integrity rule; no app can hide from it.
+So Copier steps aside: the moment one of those apps opens, it turns its own automatic copy off and
+posts a notification. Android doesn't let an app turn its own accessibility service back on, so tap
+that notification afterwards (Accessibility → *Copier — send copies to Mac* → On).
+
+- The list of apps is editable: phone app → **⋮ → Pause for payment apps…**.
+- While it's paused, everything else keeps working, and *Send to Mac* in the text-selection menu or
+  the Quick Settings tile still sends in one tap.
+- If you'd rather never deal with this, leave automatic copy off and use those one-tap ways.
+- The Mac shows the state: an orange banner in the Copier window, and `copier doctor`.
 
 ---
 
@@ -236,7 +262,8 @@ Start with **`copier doctor`** on the Mac: it checks everything below and prints
 |---|---|---|
 | Phone: **"App can't be installed"** / "App blocked to protect your device" | Play Protect blocks browser-installed apps that use Accessibility or notification access | Turn off Play Protect while installing (Play Store → profile → Play Protect → ⚙), install, turn it back on. Needed for each update. |
 | Phone: **"App was denied access"**, Accessibility toggle greyed out | Android's *restricted settings* for sideloaded apps | Settings → Apps → Copier → **⋮** (top right) → **Allow restricted settings**, then turn the toggle on. |
-| Phone: copying does nothing on the Mac | Accessibility toggle off, or Copier isn't connected | Check *Setup* in the phone app; run `copier doctor`. Meanwhile, the Quick Settings tile or the notification's **Send clipboard** button works with one tap. |
+| Phone: copying does nothing on the Mac | Automatic copy isn't running: it was paused for a payment app, or the phone force-stopped Copier (which silently switches Accessibility off, sometimes while Settings still shows it on) | `copier doctor` says which. On the phone: Copier → **Automatic copy** → Turn on (off and on again if it already looks on). Lock Copier in recents. Still nothing? `copier diagnose`, then copy, and read what it prints. |
+| Google Pay / PhonePe / a bank app won't open, or complains about accessibility | They refuse to run next to any sideloaded accessibility service | Copier turns its automatic copy off when one of them opens; if the app still complains, close it and open it again. Add other apps in ⋮ → **Pause for payment apps…**. Turn automatic copy back on from the notification. |
 | Phone stops syncing after a while | The phone's battery manager stopped Copier | Settings → Apps → Copier → Battery → **Allow background activity** + **Auto launch**; turn battery optimization off. |
 | QR page doesn't open on the phone | Not on the same network, or Wi-Fi isolates devices (common in offices, colleges, hotels) | Join the Mac to the phone's hotspot, then `copier qr` (a fresh QR with the new address). |
 | Mac: copying stopped reaching the phone | macOS paste privacy is set to *Ask* | System Settings → Privacy & Security → **Paste from Other Apps** → Copier → **Always Allow**. |
@@ -272,7 +299,8 @@ Use `/usr/bin/log`: zsh has a built-in `log` command that hides the real one.
   Phone notifications are kept in memory only.
 - **The install page** (HTTP, port 47475) runs only while Add Phone is open, and serves nothing secret.
   The APK download itself is plain HTTP on your network, so install on a network you trust.
-- **The Accessibility service** sees only the label of the button you tap, never the screen.
+- **The Accessibility service** gets the label of a button you tap and the text of short "copied"
+  messages, never the screen. It turns itself off when a payment or banking app opens.
 
 ---
 

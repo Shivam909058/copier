@@ -104,6 +104,8 @@ copier copy "Copier test from the Mac ✓"
 
 - Ask them to paste on the phone; they should see the test text.
 - Ask them to copy any text on the phone, then run `copier paste`: it should print that text.
+  If it doesn't: `copier doctor` shows whether automatic copy is running on the phone; if it is, run
+  `copier diagnose 60` in the background, ask them to copy again, and read what the phone reported.
 - Optionally run `copier ring` (the phone rings) and `copier send <some small file>`.
 
 ## 6. Report
@@ -122,7 +124,8 @@ Run `copier doctor` first; each ✗ line includes its fix. Common cases:
 | QR page never loads on the phone | Same network issue as above. After switching networks, run `copier qr` again (the QR carries the Mac's address). |
 | Phone: "App can't be installed" / "App blocked to protect your device" | Play Protect is still on; turn it off for the install, then back on. |
 | Phone: "App was denied access", Accessibility toggle greyed out | Settings → Apps → Copier → ⋮ → Allow restricted settings. |
-| Phone copies don't arrive on the Mac | Accessibility toggle off, or the phone app isn't connected (`copier doctor`). Meanwhile, the Quick Settings tile or the notification's *Send clipboard* button works. |
+| Phone copies don't arrive on the Mac | `copier doctor` → "Automatic copy is off on the phone": it was paused for a payment app, or the phone force-stopped Copier. Phone: Copier → Automatic copy → Turn on (off and on again if Settings already shows it on); lock Copier in recents. If doctor says it's running: `copier diagnose 60`, have them copy, and read the lines. Meanwhile *Send to Mac* in the text-selection menu or the Quick Settings tile works. |
+| Google Pay / PhonePe / bank app won't open | Expected: those apps refuse to run next to a sideloaded accessibility service. Copier turns its automatic copy off when they open (list: phone app → ⋮ → Pause for payment apps…); reopen the payment app, and turn automatic copy back on from Copier's notification afterwards. Explain this trade-off before enabling Accessibility. |
 | Phone stops syncing after a while | Battery restrictions: Allow background activity + Auto launch; battery optimization off. |
 | `✗ Clipboard access` / Mac copies don't arrive on the phone | Paste from Other Apps → Copier → Always Allow (step 2). |
 | Phone: update says the package conflicts | The phone app came from a different build. Uninstall it on the phone, install again from `copier qr`, and pair again. |
