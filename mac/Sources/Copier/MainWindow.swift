@@ -59,6 +59,9 @@ struct RelayView: View {
             if !app.live.notificationsAllowed {
                 NotificationsOffBanner { app.openNotificationSettings() }
             }
+            if app.live.connected, app.live.autoCopy == false {
+                AutoCopyOffBanner(phone: app.live.phoneName ?? "the phone", note: app.live.autoCopyNote)
+            }
             HStack(spacing: 12) {
                 Picker("Section", selection: $section) {
                     Text("Activity").tag(Section.activity)
@@ -201,6 +204,28 @@ private struct NotificationsOffBanner: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
         .background(Color.carbon.opacity(0.08))
+    }
+}
+
+/// Copies on the phone won't arrive by themselves until this is fixed, so say it where people look.
+private struct AutoCopyOffBanner: View {
+    let phone: String
+    let note: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pause.circle").foregroundStyle(.orange)
+            Text(message).font(.callout).fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(Color.orange.opacity(0.10))
+    }
+
+    private var message: String {
+        let reason = note.map { " (\($0))" } ?? ""
+        return "Automatic copy is off on \(phone)\(reason). Copying there won't reach this Mac until you turn it back on: open Copier on the phone, or tap its notification."
     }
 }
 

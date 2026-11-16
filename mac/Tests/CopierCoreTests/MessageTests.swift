@@ -38,6 +38,13 @@ import Testing
         #expect(String(decoding: try header.json(), as: UTF8.self) == #"{"pub":"/wA=","t":"pair-ack"}"#)
     }
 
+    @Test func statusCarriesAutoCopyState() throws {
+        let status = try Header.parse(Data(#"{"t":"status","battery":77,"charging":false,"watcher":false,"msg":"paused for Google Pay"}"#.utf8))
+        #expect(status.watcher == false)
+        #expect(status.msg == "paused for Google Pay")
+        #expect(try Header.parse(Data(#"{"t":"status","battery":77}"#.utf8)).watcher == nil)  // older phone app
+    }
+
     @Test func frameEncodingPrefixesBigEndianLength() {
         let frame = Frame.encode(Data([1, 2, 3]))
         #expect(frame == Data([0, 0, 0, 3, 1, 2, 3]))

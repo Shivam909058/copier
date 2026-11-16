@@ -152,6 +152,8 @@ final class AppController: NSObject {
         if session == nil {
             live.battery = nil
             live.ringing = false
+            live.autoCopy = nil
+            live.autoCopyNote = nil
         }
         menu?.refreshIcon()
         writeStatus()
@@ -160,6 +162,26 @@ final class AppController: NSObject {
     private static let supportDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Copier", isDirectory: true)
     private static let inviteFile = supportDirectory.appendingPathComponent("invite.url")
+    private static let diagnosticsFile = supportDirectory.appendingPathComponent("diagnostics.log")
+
+    /// A line from the phone's copy detector: logged, and kept for `copier diagnose` / `doctor`.
+    private func recordPhoneDiagnostic(_ text: String) {
+        Log.clip.info("phone: \(text, privacy: .public)")
+        let line = "\(Date.now.formatted(date: .omitted, time: .standard))  \(text)\n"
+        do {
+            try FileManager.default.createDirectory(at: Self.supportDirectory, withIntermediateDirectories: true)
+            if let handle = try? FileHandle(forWritingTo: Self.diagnosticsFile) {
+                defer { try? handle.close() }
+                // ponytail: the file only grows during a diagnose run and is reset at the next one.
+                try handle.seekToEnd()
+                try handle.write(contentsOf: Data(line.utf8))
+            } else {
+                try Data(line.utf8).write(to: Self.diagnosticsFile)
+            }
+        } catch {
+            Log.app.error("writing diagnostics failed: \(String(describing: error), privacy: .public)")
+        }
+    }
 
     /// `copier status`, `copier doctor` and `copier start` read this; tiny and rewritten on every change.
     private func writeStatus() {
@@ -178,6 +200,8 @@ final class AppController: NSObject {
             status["battery"] = battery
             status["charging"] = live.charging
         }
+        if let autoCopy = live.autoCopy { status["autoCopy"] = autoCopy }
+        if let note = live.autoCopyNote { status["autoCopyNote"] = note }
         do {
             try FileManager.default.createDirectory(at: Self.supportDirectory, withIntermediateDirectories: true)
             try JSONSerialization.data(withJSONObject: status, options: [.sortedKeys])
@@ -203,6 +227,25 @@ final class AppController: NSObject {
                 writeStatus()
             }
         case "add-phone": showAddPhone()
+        case "diagnose":
+            // The phone reports what its copy detector sees for a while (labels of tapped buttons
+            // and "copied" messages, never clipboard contents); `copier diagnose` prints it.
+            var request = Header("diagnose")
+            request.time = Int64(text.flatMap(Int.init) ?? 120)
+            try? FileManager.default.removeItem(at: Self.diagnosticsFile)
+            recordPhoneDiagnostic(connectedPhones.isEmpty ? "the phone isn't connected" : "asked the phone to report for \(request.time ?? 120) s")
+            broadcast(Message(request))
+        case "selftest-otp":
+            // `copier selftest`: feeds a sample phone notification through the real path (detector,
+            // clipboard, arrival panel, Notifications tab) so people can see the OTP flow safely.
+            var sample = Header("notif")
+            sample.key = "copier-selftest-\(UUID().uuidString)"
+            sample.pkg = "dev.copier.selftest"
+            sample.appName = "Copier test"
+            sample.title = "Copier test"
+            sample.text = "\(text ?? "482913") is your Copier test code. Don't share it."
+            sample.time = Int64(Date.now.timeIntervalSince1970 * 1000)
+            receiveNotification(sample)
         default: break
         }
     }
@@ -283,7 +326,11 @@ final class AppController: NSObject {
         case "status":
             live.battery = header.battery.map { max(0, min(100, $0)) }
             live.charging = header.charging ?? false
+            live.autoCopy = header.watcher
+            live.autoCopyNote = header.msg
             writeStatus()
+        case "diag":
+            if let text = header.text { recordPhoneDiagnostic(text) }
         case "notif":
             receiveNotification(header)
         case "notif-removed":

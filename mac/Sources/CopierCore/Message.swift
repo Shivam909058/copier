@@ -36,6 +36,8 @@ public struct Header: Codable, Sendable, Equatable {
     public var call: Bool?
     public var index: Int?
     public var url: String?
+    /// `status`: whether the phone's automatic-copy service is running.
+    public var watcher: Bool?
 
     public init(_ t: String) {
         self.t = t

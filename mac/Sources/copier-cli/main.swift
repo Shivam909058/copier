@@ -15,6 +15,8 @@ usage: copier <command>
   stop                quit Copier on this Mac
   qr                  show the pairing QR code here and on screen
   doctor              check every link in the chain and say how to fix what's broken
+  selftest            try the OTP popup, Mac → phone and phone → Mac copy, guided
+  diagnose [seconds]  watch what the phone's copy detector sees, live (default 120 s)
   status [--json]     phone connection and battery
 
   send <file>…        send files to the phone
@@ -24,6 +26,9 @@ usage: copier <command>
   ring                ring the phone
   history [n]         the last n items (default 10)
 """
+
+// Line-buffer stdout so progress shows up live even when piped (scripts, agents, `| tee`).
+setvbuf(stdout, nil, _IOLBF, 0)
 
 let bundleID = "dev.copier.mac"
 let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -206,6 +211,18 @@ case "doctor":
     check(connected, "Connected to \(current["phone"] as? String ?? "the phone")\(batteryText(current))",
           "The phone isn't connected",
           fix: "open Copier on the phone; same Wi-Fi as this Mac (office Wi-Fi often blocks devices: use the phone's hotspot); then copier start")
+    if connected {
+        switch current["autoCopy"] as? Bool {
+        case true?:
+            print("✓ Automatic copy is running on the phone")
+        case false?:
+            let note = (current["autoCopyNote"] as? String).map { " (\($0))" } ?? ""
+            check(false, "", "Automatic copy is off on the phone\(note), so copying there won't reach this Mac",
+                  fix: "on the phone: open Copier (or tap its notification) → Automatic copy → Turn on. Payment apps pause it on purpose.")
+        case nil:
+            print("– Automatic copy: unknown (update the phone app: copier qr → Install → Update)")
+        }
+    }
     let access = current["clipboardAccess"] as? String ?? "allowed"
     check(access == "allowed", "Clipboard access: allowed",
           "macOS asks before Copier reads the clipboard (\(access)), so Mac → phone sync is paused",
@@ -214,6 +231,67 @@ case "doctor":
     print(notifications ? "✓ Notifications on" : "– Notifications off (optional: System Settings → Notifications → Copier)")
     print(problems == 0 ? "\nAll good." : "\n\(problems) thing\(problems == 1 ? "" : "s") to fix.")
     exit(problems == 0 ? 0 : 1)
+
+case "selftest":
+    guard appIsRunning() else { fail("Copier isn't running. Start it with: copier start") }
+    guard (status()["connected"] as? Bool) == true else { fail("The phone isn't connected. Run: copier start") }
+    struct Item: Decodable {
+        let direction: String
+        let kind: String
+        let text: String?
+        let sensitive: Bool?
+        let date: Date
+    }
+    func latestFromPhone() -> Item? {
+        let data = (try? Data(contentsOf: support.appendingPathComponent("activity.json"))) ?? Data("[]".utf8)
+        return ((try? JSONDecoder().decode([Item].self, from: data)) ?? []).first { $0.direction == "fromPhone" && $0.kind == "text" }
+    }
+    let code = String(Int.random(in: 100_000...999_999))
+    let started = Date()
+
+    print("1/3  A phone notification with a one-time code → Mac")
+    post("selftest-otp", ["text": code])
+    print("     Top-right of the Mac: “Code \(code) copied”. Press ⌘V anywhere on the Mac to paste it.")
+    print("     It's also under Notifications in the Copier window.\n")
+
+    print("2/3  Mac → phone clipboard")
+    post("copy", ["text": "Copier test: your code is \(code)"])
+    print("     Paste on the phone now; you should see “Copier test: your code is \(code)”.\n")
+
+    print("3/3  Phone → Mac clipboard")
+    print("     On the phone, select some text and tap Copy (for example in the place you just pasted).")
+    print("     Waiting up to 90 seconds…")
+    if wait(90, until: { (latestFromPhone()?.date ?? .distantPast) > started }), let item = latestFromPhone() {
+        let what = item.sensitive == true ? "a password-type item" : "“\(String((item.text ?? "").prefix(80)))”"
+        print("     ✓ Arrived on the Mac: \(what). Press ⌘V on the Mac to paste it.")
+    } else {
+        print("""
+             ✗ Nothing arrived from the phone. On the phone, check Accessibility → “Copier — send copies to Mac”
+               is on (Copier app → Setup), then run: copier doctor
+        """)
+        exit(1)
+    }
+
+case "diagnose":
+    guard appIsRunning() else { fail("Copier isn't running. Start it with: copier start") }
+    guard (status()["connected"] as? Bool) == true else { fail("The phone isn't connected. Run: copier start") }
+    let seconds = arguments.first.flatMap(Int.init).map { max(10, min(900, $0)) } ?? 120
+    let log = support.appendingPathComponent("diagnostics.log")
+    post("diagnose", ["text": String(seconds)])
+    print("""
+    For \(seconds) s the phone reports what its copy detector sees: the names of buttons you tap and
+    "copied" messages. Never what you copied. Now copy something on the phone.
+
+    """)
+    var printed = 0
+    let deadline = Date().addingTimeInterval(Double(seconds))
+    while Date() < deadline {
+        let lines = ((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(separator: "\n")
+        for line in lines.dropFirst(printed) { print(line) }
+        printed = max(printed, lines.count)
+        Thread.sleep(forTimeInterval: 0.4)
+    }
+    print("\nDone. If a copy didn't show up above, send these lines along when you report it.")
 
 case "send":
     guard !arguments.isEmpty else { fail("usage: copier send <file>…") }

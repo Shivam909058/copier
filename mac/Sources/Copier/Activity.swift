@@ -41,6 +41,10 @@ final class LiveState {
     var charging = false
     var ringing = false
     var notificationsAllowed = true
+    /// Whether automatic copy is running on the phone (nil: unknown, e.g. an older phone app).
+    var autoCopy: Bool?
+    /// Why it's off, when the phone says ("paused for Google Pay").
+    var autoCopyNote: String?
 }
 
 /// A notification mirrored from the phone. Held in memory only: notification text never touches disk.

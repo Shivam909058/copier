@@ -119,7 +119,9 @@ The phone tries each host in `h`, then Bonjour. Port 47475 is only open while Ad
 | `clip` | both | `id` (optional), `sensitive` (bool), `htmlBytes` (int, optional) | `html bytes (htmlBytes) ‖ UTF-8 plain text` |
 | `ack` | both | `id` | — |
 | `offer` | Mac → phone | `id`, `name`, `size`, `mime`, `purpose`, `sensitive` | — |
-| `status` | phone → Mac | `battery` (0–100), `charging` (bool) | — |
+| `status` | phone → Mac | `battery` (0–100), `charging` (bool), `watcher` (bool), `msg` (optional) | — |
+| `diag` | phone → Mac | `text` | — |
+| `diagnose` | Mac → phone | `time` (seconds) | — |
 | `bye` | both | — | — |
 
 | `notif` | phone → Mac | `key`, `pkg`, `appName`, `title`, `text`, `time` (ms), `actions` ([String]), `replyAction` (int, optional), `call` (bool) | — |
@@ -139,8 +141,13 @@ The phone tries each host in `h`, then Bonjour. Port 47475 is only open while Ad
 - `put` with `purpose: "screenshot"` (phone → Mac): saved to Downloads **and** put on the clipboard.
 - A receiver that applies a `clip` carrying an `id` replies `{"t":"ack","id":"<same id>"}`, which the
   sender shows as delivered ("On Mac ✓" / "On phone ✓"). Clips without an `id` get no ack.
-- The phone sends `status` right after `auth-ok`, then whenever the battery level or charging state
-  changes.
+- The phone sends `status` right after `auth-ok`, then whenever the battery level, charging state or
+  automatic-copy state changes. `watcher` says whether the phone's automatic-copy service is really
+  running; when it isn't, `msg` may say why ("paused for Google Pay").
+- `diag` carries one diagnostic line from the phone's copy detector for the Mac's log. It may name
+  an app and the label of a tapped control (24 characters at most); it never carries clipboard
+  contents. Outside a `diagnose` window the phone only sends failures. `diagnose` asks the phone
+  to report every step for `time` seconds (10–900).
 - Blob deliveries are confirmed by the data connection's `done`; `put`/`offer` ids double as the
   activity-feed ids on both devices.
 
