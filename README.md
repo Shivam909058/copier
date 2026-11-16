@@ -10,6 +10,11 @@ Setup is one terminal line on the Mac and one QR scan on the phone.
 curl -fsSL https://raw.githubusercontent.com/Shivam909058/copier/main/install.sh | bash
 ```
 
+**Using an AI coding agent?** Give it this repository's link and say *"set up Copier"*. Claude Code,
+Codex, Cursor and similar agents follow [AGENTS.md](AGENTS.md): they install the Mac app, walk you
+through the few taps only you can do, wait for your phone to connect, test both directions, and fix
+what's broken. In Claude Code you can also run `/setup-copier` inside the repo.
+
 ---
 
 ## Contents
