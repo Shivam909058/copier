@@ -26,9 +26,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// Completion-handler form on purpose: only the Sendable status leaves the callback, which
+    /// compiles under Swift 6.1 / the macOS 15 SDK (CI) as well as newer toolchains.
     func isAllowed() async -> Bool {
-        let status = await center.notificationSettings().authorizationStatus
-        return status == .authorized || status == .provisional
+        await withCheckedContinuation { continuation in
+            center.getNotificationSettings { settings in
+                let status = settings.authorizationStatus
+                continuation.resume(returning: status == .authorized || status == .provisional)
+            }
+        }
     }
 
     func post(title: String, body: String, revealing file: URL? = nil) {
