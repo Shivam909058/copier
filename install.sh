@@ -70,7 +70,7 @@ main() {
     [[ -n "$zip_url" && -n "$sums_url" ]] || die "the latest release has no Mac build yet. Try again in a few minutes."
     zip_name="$(basename "$zip_url")"
 
-    bold "Downloading $zip_name…"
+    bold "Downloading ${zip_name}…"
     curl -fL --progress-bar -o "$tmp/$zip_name" "$zip_url"
     curl -fsSL -o "$tmp/SHA256SUMS" "$sums_url"
     (cd "$tmp" && grep " $zip_name\$" SHA256SUMS | shasum -a 256 -c - >/dev/null) \
