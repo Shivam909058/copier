@@ -60,7 +60,7 @@ struct RelayView: View {
                 NotificationsOffBanner { app.openNotificationSettings() }
             }
             if app.live.connected, app.live.autoCopy == false {
-                AutoCopyOffBanner(phone: app.live.phoneName ?? "the phone", note: app.live.autoCopyNote)
+                AutoCopyOffBanner(phone: app.live.phoneName ?? "the phone", note: app.live.autoCopyNote, managed: app.live.autoCopyManaged)
             }
             HStack(spacing: 12) {
                 Picker("Section", selection: $section) {
@@ -211,6 +211,7 @@ private struct NotificationsOffBanner: View {
 private struct AutoCopyOffBanner: View {
     let phone: String
     let note: String?
+    let managed: Bool
 
     var body: some View {
         HStack(spacing: 10) {
@@ -225,6 +226,7 @@ private struct AutoCopyOffBanner: View {
 
     private var message: String {
         let reason = note.map { " (\($0))" } ?? ""
+        if managed { return "Automatic copy is paused on \(phone)\(reason). It comes back by itself in a few seconds." }
         return "Automatic copy is off on \(phone)\(reason). Copying there won't reach this Mac until you turn it back on: open Copier on the phone, or tap its notification."
     }
 }

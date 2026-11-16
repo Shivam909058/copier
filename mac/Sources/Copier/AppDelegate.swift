@@ -154,6 +154,7 @@ final class AppController: NSObject {
             live.ringing = false
             live.autoCopy = nil
             live.autoCopyNote = nil
+            live.autoCopyManaged = false
         }
         menu?.refreshIcon()
         writeStatus()
@@ -202,6 +203,7 @@ final class AppController: NSObject {
         }
         if let autoCopy = live.autoCopy { status["autoCopy"] = autoCopy }
         if let note = live.autoCopyNote { status["autoCopyNote"] = note }
+        if live.autoCopyManaged { status["autoCopyManaged"] = true }
         do {
             try FileManager.default.createDirectory(at: Self.supportDirectory, withIntermediateDirectories: true)
             try JSONSerialization.data(withJSONObject: status, options: [.sortedKeys])
@@ -227,6 +229,7 @@ final class AppController: NSObject {
                 writeStatus()
             }
         case "add-phone": showAddPhone()
+        case "usb-setup": setUpPhone(alert: false)
         case "diagnose":
             // The phone reports what its copy detector sees for a while (labels of tapped buttons
             // and "copied" messages, never clipboard contents); `copier diagnose` prints it.
@@ -328,6 +331,7 @@ final class AppController: NSObject {
             live.charging = header.charging ?? false
             live.autoCopy = header.watcher
             live.autoCopyNote = header.msg
+            live.autoCopyManaged = header.managed ?? false
             writeStatus()
         case "diag":
             if let text = header.text { recordPhoneDiagnostic(text) }
@@ -735,10 +739,20 @@ final class AppController: NSObject {
         }
     }
 
-    func setUpPhone() {
+    /// The optional one-time USB step (PhoneSetup). `copier usb-setup` reads the result file
+    /// instead of getting an alert.
+    func setUpPhone(alert: Bool = true) {
         Task {
-            let outcome = await PhoneSetup.run()
-            showAlert(outcome.succeeded ? "Phone is set up" : "Phone setup didn't finish", outcome.summary)
+            let outcome = await PhoneSetup.run(apk: Bundle.main.url(forResource: "Copier", withExtension: "apk"))
+            let title = outcome.succeeded ? "Phone is set up" : "Phone setup didn't finish"
+            do {
+                try FileManager.default.createDirectory(at: Self.supportDirectory, withIntermediateDirectories: true)
+                try Data("\(outcome.succeeded ? "✓" : "✗") \(title)\n\(outcome.summary)\n".utf8)
+                    .write(to: Self.supportDirectory.appendingPathComponent("usb-setup.txt"), options: .atomic)
+            } catch {
+                Log.app.error("writing the USB setup result failed: \(String(describing: error), privacy: .public)")
+            }
+            if alert { showAlert(title, outcome.summary) }
         }
     }
 

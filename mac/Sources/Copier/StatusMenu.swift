@@ -97,7 +97,7 @@ final class StatusMenu: NSObject, NSMenuDelegate, NSWindowDelegate, NSDraggingDe
         }
         let advanced = NSMenu()
         advanced.autoenablesItems = false
-        advanced.addItem(ActionItem("Automatic Phone Clipboard over USB (optional)…") { [app] in app.setUpPhone() })
+        advanced.addItem(ActionItem("Self-Managing Automatic Copy (one-time USB setup)…") { [app] in app.setUpPhone() })
         advanced.addItem(ActionItem("Install Command-Line Tool (copier)…") { [app] in app.installCommandLineTool() })
         advanced.addItem(ActionItem("Clear History…") { [app] in app.activity.clear() })
         let advancedItem = NSMenuItem(title: "Advanced", action: nil, keyEquivalent: "")

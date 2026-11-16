@@ -18,6 +18,8 @@ usage: copier <command>
   selftest            try the OTP popup, Mac → phone and phone → Mac copy, guided
   diagnose [seconds]  watch what the phone's copy detector sees, live (default 120 s)
   status [--json]     phone connection and battery
+  usb-setup           optional, once, over a USB cable: updates the phone app and lets automatic
+                      copy turn itself back on after payment apps (needs USB debugging for a minute)
 
   send <file>…        send files to the phone
   copy [text]         put text on the phone's clipboard (reads stdin when no text is given)
@@ -37,6 +39,20 @@ let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .u
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
+}
+
+/// The macOS firewall can silently drop the phone's connections; reading its state needs no sudo.
+func firewallIsOn() -> Bool {
+    let tool = Process()
+    tool.executableURL = URL(fileURLWithPath: "/usr/libexec/ApplicationFirewall/socketfilterfw")
+    tool.arguments = ["--getglobalstate"]
+    let pipe = Pipe()
+    tool.standardOutput = pipe
+    tool.standardError = pipe
+    guard (try? tool.run()) != nil else { return false }
+    let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    tool.waitUntilExit()
+    return output.contains("State = ") && !output.contains("State = 0")
 }
 
 func appIsRunning() -> Bool { !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty }
@@ -211,14 +227,22 @@ case "doctor":
     check(connected, "Connected to \(current["phone"] as? String ?? "the phone")\(batteryText(current))",
           "The phone isn't connected",
           fix: "open Copier on the phone; same Wi-Fi as this Mac (office Wi-Fi often blocks devices: use the phone's hotspot); then copier start")
+    if !connected, firewallIsOn() {
+        print("    → the macOS Firewall is on: System Settings → Network → Firewall → Options… → Copier → Allow incoming connections (and “Block all incoming connections” off)")
+    }
     if connected {
+        let managed = (current["autoCopyManaged"] as? Bool) == true
         switch current["autoCopy"] as? Bool {
         case true?:
-            print("✓ Automatic copy is running on the phone")
+            print("✓ Automatic copy is running on the phone\(managed ? " (and turns itself back on after payment apps)" : "")")
         case false?:
             let note = (current["autoCopyNote"] as? String).map { " (\($0))" } ?? ""
-            check(false, "", "Automatic copy is off on the phone\(note), so copying there won't reach this Mac",
-                  fix: "on the phone: open Copier (or tap its notification) → Automatic copy → Turn on. Payment apps pause it on purpose.")
+            if managed {
+                print("– Automatic copy is paused on the phone\(note); it comes back by itself within seconds")
+            } else {
+                check(false, "", "Automatic copy is off on the phone\(note), so copying there won't reach this Mac",
+                      fix: "on the phone: open Copier (or tap its notification) → Automatic copy → Turn on. Payment apps pause it on purpose; to make it come back by itself: copier usb-setup (once, over USB)")
+            }
         case nil:
             print("– Automatic copy: unknown (update the phone app: copier qr → Install → Update)")
         }
@@ -231,6 +255,22 @@ case "doctor":
     print(notifications ? "✓ Notifications on" : "– Notifications off (optional: System Settings → Notifications → Copier)")
     print(problems == 0 ? "\nAll good." : "\n\(problems) thing\(problems == 1 ? "" : "s") to fix.")
     exit(problems == 0 ? 0 : 1)
+
+case "usb-setup":
+    guard appIsRunning() else { fail("Copier isn't running. Start it with: copier start") }
+    let result = support.appendingPathComponent("usb-setup.txt")
+    try? FileManager.default.removeItem(at: result)
+    post("usb-setup")
+    print("Setting up the phone over USB (up to a minute; watch the phone for an “Allow” prompt)…")
+    guard wait(180, until: { FileManager.default.fileExists(atPath: result.path) }),
+          let text = try? String(contentsOf: result, encoding: .utf8) else {
+        fail("Copier didn't answer. Run: copier start --restart")
+    }
+    print(text, terminator: "")
+    if text.hasPrefix("✓"), (status()["paired"] as? Int ?? 0) == 0 {
+        print("\nNext: pair the phone. Run `copier qr`, scan it with the phone's camera and tap “2 · Open Copier to pair”.")
+    }
+    exit(text.hasPrefix("✓") ? 0 : 1)
 
 case "selftest":
     guard appIsRunning() else { fail("Copier isn't running. Start it with: copier start") }
@@ -277,6 +317,7 @@ case "diagnose":
     guard (status()["connected"] as? Bool) == true else { fail("The phone isn't connected. Run: copier start") }
     let seconds = arguments.first.flatMap(Int.init).map { max(10, min(900, $0)) } ?? 120
     let log = support.appendingPathComponent("diagnostics.log")
+    try? FileManager.default.removeItem(at: log)  // or the previous run's lines get printed as this one's
     post("diagnose", ["text": String(seconds)])
     print("""
     For \(seconds) s the phone reports what its copy detector sees: the names of buttons you tap and

@@ -38,6 +38,8 @@ public struct Header: Codable, Sendable, Equatable {
     public var url: String?
     /// `status`: whether the phone's automatic-copy service is running.
     public var watcher: Bool?
+    /// `status`: the phone can turn that service back on by itself (one-time USB setup done).
+    public var managed: Bool?
 
     public init(_ t: String) {
         self.t = t

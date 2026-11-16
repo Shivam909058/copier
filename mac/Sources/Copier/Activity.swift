@@ -45,6 +45,8 @@ final class LiveState {
     var autoCopy: Bool?
     /// Why it's off, when the phone says ("paused for Google Pay").
     var autoCopyNote: String?
+    /// The phone turns automatic copy back on by itself (after `copier usb-setup`).
+    var autoCopyManaged = false
 }
 
 /// A notification mirrored from the phone. Held in memory only: notification text never touches disk.

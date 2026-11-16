@@ -42,6 +42,8 @@ import Testing
         let status = try Header.parse(Data(#"{"t":"status","battery":77,"charging":false,"watcher":false,"msg":"paused for Google Pay"}"#.utf8))
         #expect(status.watcher == false)
         #expect(status.msg == "paused for Google Pay")
+        #expect(status.managed == nil)
+        #expect(try Header.parse(Data(#"{"t":"status","watcher":false,"managed":true}"#.utf8)).managed == true)
         #expect(try Header.parse(Data(#"{"t":"status","battery":77}"#.utf8)).watcher == nil)  // older phone app
     }
 
