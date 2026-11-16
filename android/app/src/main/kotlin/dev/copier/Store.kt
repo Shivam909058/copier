@@ -70,6 +70,31 @@ class Store private constructor(context: Context) {
         get() = prefs.getBoolean(AUTO_CLIPBOARD, true)
         set(value) = prefs.edit().putBoolean(AUTO_CLIPBOARD, value).apply()
 
+    /** Also check the clipboard after menus and dialogs close (CopyDetector.thorough). */
+    var thoroughCopy: Boolean
+        get() = prefs.getBoolean(THOROUGH_COPY, true)
+        set(value) = prefs.edit().putBoolean(THOROUGH_COPY, value).apply()
+
+    /** Learned at runtime: this phone refuses clipboard reads from the focus overlay. */
+    var overlayBlocked: Boolean
+        get() = prefs.getBoolean(OVERLAY_BLOCKED, false)
+        set(value) = prefs.edit().putBoolean(OVERLAY_BLOCKED, value).apply()
+
+    /** The user turned automatic copy on at some point, so tell them when Android stops it. */
+    var autoCopyWanted: Boolean
+        get() = prefs.getBoolean(AUTO_COPY_WANTED, false)
+        set(value) = prefs.edit().putBoolean(AUTO_COPY_WANTED, value).apply()
+
+    /** Name of the payment app automatic copy stepped aside for, until it's turned back on. */
+    var pausedFor: String?
+        get() = prefs.getString(PAUSED_FOR, null)
+        set(value) = prefs.edit().putString(PAUSED_FOR, value).apply()
+
+    /** Packages that refuse to run next to an accessibility service; automatic copy pauses for them. */
+    var pauseApps: Set<String>
+        get() = prefs.getStringSet(PAUSE_APPS, null) ?: PaymentApps.KNOWN
+        set(value) = prefs.edit().putStringSet(PAUSE_APPS, value).apply()
+
     /** New screenshots go to the Mac (needs photo access). */
     var screenshots: Boolean
         get() = prefs.getBoolean(SCREENSHOTS, true)
@@ -138,6 +163,11 @@ class Store private constructor(context: Context) {
         private const val MAC_HOST = "mac_host"
         private const val MAC_PORT = "mac_port"
         private const val AUTO_CLIPBOARD = "auto_clipboard"
+        private const val THOROUGH_COPY = "thorough_copy"
+        private const val OVERLAY_BLOCKED = "overlay_blocked"
+        private const val AUTO_COPY_WANTED = "auto_copy_wanted"
+        private const val PAUSED_FOR = "paused_for"
+        private const val PAUSE_APPS = "pause_apps"
         private const val SCREENSHOTS = "screenshots"
         private const val ONBOARDING = "onboarding_step"
 

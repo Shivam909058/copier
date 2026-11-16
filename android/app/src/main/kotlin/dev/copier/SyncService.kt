@@ -93,7 +93,7 @@ class SyncService : Service() {
     }
 
     @Volatile private var battery: Pair<Int, Boolean>? = null
-    @Volatile private var batterySent: Pair<Int, Boolean>? = null
+    @Volatile private var statusSent: String? = null
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
@@ -311,8 +311,14 @@ class SyncService : Service() {
     }
 
     /** The latest timeline event, for the status notification ("Photo on Mac ✓ · 10:40"). */
-    fun latestEvent(): String? =
-        activity.latest()?.let { "${it.summary()} · ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it.time))}" }
+    fun latestEvent(): String? {
+        // Someone who turned automatic copy on should hear about it the moment Android stops it.
+        if (store.autoCopyWanted && !CopyWatcher.running && store.pairedMac != null) {
+            return store.pausedFor?.let { "Automatic copy paused for $it. Tap to turn it back on" }
+                ?: "Automatic copy is off. Tap to turn it on"
+        }
+        return activity.latest()?.let { "${it.summary()} · ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(it.time))}" }
+    }
 
     // endregion
 
@@ -362,7 +368,7 @@ class SyncService : Service() {
         lastReceivedAt = SystemClock.elapsedRealtime()
         store.rememberMac(ok.name ?: macName, target.first, target.second)
         Log.i(TAG, "connected to Mac at ${target.first}:${target.second} (app ${ok.app})")
-        batterySent = null
+        statusSent = null
         sendStatus()
         setState(State.CONNECTED)
     }
@@ -400,6 +406,7 @@ class SyncService : Service() {
                 "ring" -> ringer.start()
                 "ring-stop" -> ringer.stop()
                 "open" -> header.url?.let(::openFromMac)
+                "diagnose" -> onDiagnose(header.time ?: 120)
                 "bye" -> {
                     Log.i(TAG, "Mac is going to sleep")
                     macAsleep = true
@@ -505,11 +512,41 @@ class SyncService : Service() {
         }
     }
 
+    /** Battery, and whether automatic copy is really running — the Mac shows both. */
     private fun sendStatus() {
-        val current = battery ?: return
-        if (current == batterySent || control == null) return
-        batterySent = current
-        sendToMac(Header("status", battery = current.first, charging = current.second))
+        if (control == null) return
+        val watching = CopyWatcher.running
+        val reason = if (watching) null else store.pausedFor?.let { "paused for $it" }
+        val current = "${battery?.first}|${battery?.second}|$watching|$reason"
+        if (current == statusSent) return
+        statusSent = current
+        sendToMac(Header("status", battery = battery?.first, charging = battery?.second, watcher = watching, msg = reason))
+    }
+
+    /** The copy watcher started or stopped: tell the Mac and refresh what the user sees here. */
+    fun watcherChanged() {
+        statusSent = null
+        sendStatus()
+        main.post {
+            Notifications.updateStatus(this, statusText(), latestEvent())
+            listener?.invoke(statusText())
+        }
+    }
+
+    /** A diagnostic line for the Mac's log and `copier diagnose`. Never clipboard contents. */
+    fun diag(text: String) = sendToMac(Header("diag", text = text))
+
+    private fun onDiagnose(seconds: Long) {
+        CopyWatcher.diagnose(seconds)
+        val automatic = when {
+            CopyWatcher.running -> "running"
+            CopyWatcher.enabledInSettings(this) -> "ON in Settings but NOT running (Android stopped it: turn it off and on again)"
+            store.pausedFor != null -> "paused for ${store.pausedFor}"
+            else -> "off"
+        }
+        diag("phone: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), Copier ${store.appVersion}")
+        diag("automatic copy: $automatic; menu checks ${if (store.thoroughCopy) "on" else "off"}; overlay reads ${if (store.overlayBlocked) "blocked on this phone" else "ok so far"}")
+        diag(if (CopyWatcher.running) "ready: copy something on the phone now" else "automatic copy isn't running, so nothing will be detected")
     }
 
     /** New screenshots (in a "Screenshots" folder, added in the last 30 s) go to the Mac. */

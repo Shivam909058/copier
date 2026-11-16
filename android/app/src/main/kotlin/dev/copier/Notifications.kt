@@ -10,11 +10,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.os.Build
+import android.provider.Settings
 import java.util.concurrent.atomic.AtomicInteger
 
 object Notifications {
     const val ID_STATUS = 1
     private const val ID_RING = 2
+    private const val ID_PAUSED = 3
     private const val CHANNEL_STATUS = "status"
     private const val CHANNEL_TRANSFERS = "transfers"
     private const val CHANNEL_RING = "ring"
@@ -78,6 +80,26 @@ object Notifications {
             .build()
         context.getSystemService(NotificationManager::class.java).notify(ID_RING, notification)
     }
+
+    /** Automatic copy stepped aside for a payment app; tapping leads to where it's turned back on. */
+    fun paused(context: Context, appName: String) {
+        if (!allowed(context)) return
+        val settings = PendingIntent.getActivity(
+            context, 3, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE,
+        )
+        val detail = "$appName won't open while Copier's accessibility is on, so Copier turned it off. " +
+            "If $appName still complains, close it and open it again. Tap here afterwards to turn automatic copy back on."
+        val notification = Notification.Builder(context, CHANNEL_TRANSFERS)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("Automatic copy paused for $appName")
+            .setContentText("Tap here afterwards to turn it back on.")
+            .setStyle(Notification.BigTextStyle().bigText(detail))
+            .setContentIntent(settings)
+            .build()
+        context.getSystemService(NotificationManager::class.java).notify(ID_PAUSED, notification)
+    }
+
+    fun cancelPaused(context: Context) = context.getSystemService(NotificationManager::class.java).cancel(ID_PAUSED)
 
     fun cancelRinging(context: Context) = context.getSystemService(NotificationManager::class.java).cancel(ID_RING)
 

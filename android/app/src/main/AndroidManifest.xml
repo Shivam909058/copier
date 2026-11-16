@@ -26,6 +26,8 @@
 
     <!-- App names for mirrored notifications (package visibility, Android 11+). -->
     <queries>
+        <!-- CopyWatcher reads the system UI's localized "Text copied" phrases. -->
+        <package android:name="com.android.systemui" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />

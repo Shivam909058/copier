@@ -27,6 +27,7 @@ import android.view.WindowInsets
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
@@ -470,7 +471,7 @@ class MainActivity : Activity() {
         button("Turn on automatic sending") { openAccessibilitySettings() }
         section("See this phone's notifications on ${mac.name}")
         button("Turn on notifications on Mac") { openNotificationAccessSettings() }
-        text(sendHint(copyWatcherEnabled(this)))
+        text(sendHint(CopyWatcher.running))
         if (Build.VERSION.SDK_INT >= 33) button("Add the Quick Settings tile") { requestTile() }
         button("Done") {
             store.onboardingStep = Onboarding.COMPLETE.ordinal
@@ -478,11 +479,12 @@ class MainActivity : Activity() {
         }
     }
 
-    /** The relay screen: header, send buttons, the timeline, and setup. */
+    /** The relay screen: header with options, send buttons, anything that needs fixing, the timeline. */
     private fun renderRelay(mac: PairedMac) {
         val service = SyncService.instance
-        add(relay.header(mac.name, service?.statusText() ?: "Starting…", service?.isConnected == true))
+        add(relay.header(mac.name, service?.statusText() ?: "Starting…", service?.isConnected == true) { showMenu(it, mac) })
         add(relay.actionRow(onPhotos = ::pickPhotos, onFiles = ::pickFiles))
+        renderSetup(mac)
         val items = activityStore.snapshot()
         if (items.isEmpty()) {
             add(relay.empty(mac.name))
@@ -495,41 +497,107 @@ class MainActivity : Activity() {
                 }
             }
         }
-        renderSetup(mac)
     }
 
-    /** Collapses to one line once everything is on. */
+    private fun showMenu(anchor: View, mac: PairedMac) {
+        PopupMenu(this, anchor).apply {
+            menu.add("Setup and permissions").setOnMenuItemClickListener {
+                setupExpanded = true
+                render()
+                true
+            }
+            menu.add("Pause for payment apps…").setOnMenuItemClickListener {
+                choosePauseApps()
+                true
+            }
+            menu.add("Clear history…").setOnMenuItemClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setMessage("Clear the timeline on this phone? Files stay where they were saved.")
+                    .setPositiveButton("Clear") { _, _ -> activityStore.clear() }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+                true
+            }
+            menu.add("Unpair ${mac.name}…").setOnMenuItemClickListener {
+                AlertDialog.Builder(this@MainActivity)
+                    .setMessage("Unpair ${mac.name}? You'll need to pair again to sync.")
+                    .setPositiveButton("Unpair") { _, _ ->
+                        store.pairedMac = null
+                        getSystemService(ShortcutManager::class.java).removeAllDynamicShortcuts()
+                        SyncService.instance?.reconnect()
+                        startDiscovery()
+                        render()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+                true
+            }
+        }.show()
+    }
+
+    /** Which apps automatic copy steps aside for (they refuse to run next to an accessibility service). */
+    private fun choosePauseApps() {
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val paused = store.pauseApps
+        val apps = packageManager.queryIntentActivities(launcher, 0)
+            .map { it.activityInfo.packageName to it.loadLabel(packageManager).toString() }
+            .filter { it.first != packageName }
+            .distinctBy { it.first }
+            .sortedWith(compareBy({ it.first !in paused }, { it.second.lowercase() }))
+        val checked = BooleanArray(apps.size) { apps[it].first in paused }
+        AlertDialog.Builder(this)
+            .setTitle("Pause automatic copy in")
+            .setMultiChoiceItems(apps.map { it.second }.toTypedArray(), checked) { _, index, isChecked -> checked[index] = isChecked }
+            .setPositiveButton("Save") { _, _ ->
+                val installed = apps.map { it.first }.toSet()
+                val chosen = apps.filterIndexed { index, _ -> checked[index] }.map { it.first }
+                store.pauseApps = (paused - installed) + chosen // keep known apps that aren't installed yet
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /**
+     * Shown above the timeline while something needs attention, or when opened from the menu.
+     * Only what sync depends on counts as "to fix"; optional features are listed but never nag.
+     */
     private fun renderSetup(mac: PairedMac) {
-        val automatic = copyWatcherEnabled(this)
+        val watching = CopyWatcher.running
+        val autoCopyStopped = store.autoCopyWanted && !watching
         val mirroring = NotifListener.enabled(this)
         val photos = SyncService.canReadImages(this)
         val notifications = Notifications.allowed(this)
         val battery = ignoringBatteryOptimizations()
-        val toFix = listOf(automatic, mirroring, photos, notifications, battery).count { !it }
-        val expanded = setupExpanded ?: (toFix > 0)
+        val toFix = listOf(!notifications, !battery, autoCopyStopped).count { it }
+        if (toFix == 0 && setupExpanded != true) return
+        val expanded = setupExpanded ?: true
         section(
             when (toFix) {
-                0 -> "Setup ✓"
-                1 -> "Setup: 1 thing to turn on"
-                else -> "Setup: $toFix things to turn on"
+                0 -> "Setup ✓ (tap to hide)"
+                1 -> "Setup: 1 thing to fix"
+                else -> "Setup: $toFix things to fix"
             },
         ).setOnClickListener {
-            setupExpanded = !expanded
+            setupExpanded = if (toFix == 0) null else !expanded
             render()
         }
         if (!expanded) return
 
-        check("Send copies automatically", automatic, "Turn on") { openAccessibilitySettings() }
-        if (!automatic) {
-            text(AUTO_HINT)
-            button("Open App info (for restricted settings)") { openAppInfo() }
-        }
-        check("Notifications on ${mac.name}", mirroring, "Turn on") { openNotificationAccessSettings() }
-        check("Screenshots to ${mac.name}", photos, "Allow") { requestImageAccess() }
-        if (photos) {
-            switch("Send new screenshots to ${mac.name}", store.screenshots) { store.screenshots = it }
-        } else {
-            text("When Android asks, choose “Allow all”: “Select photos” can't see new screenshots.")
+        check("Automatic copy to ${mac.name}", watching, "Turn on") { openAccessibilitySettings() }
+        when {
+            watching -> switch("Also check after menus close (catches Copy inside menus)", store.thoroughCopy) {
+                store.thoroughCopy = it
+                CopyWatcher.setThorough(it)
+            }
+            CopyWatcher.enabledInSettings(this) ->
+                text("Android stopped it even though Accessibility shows it as on. Turn “Copier — send copies to Mac” off and on again. To keep it running, lock Copier in the recent-apps screen.")
+            store.pausedFor != null ->
+                text("Paused so ${store.pausedFor} could open. Turn “Copier — send copies to Mac” back on in Accessibility.")
+            else -> {
+                text(AUTO_HINT)
+                text("Payment and banking apps won't open while this is on. Copier turns it off when you open one (⋮ → Pause for payment apps) and reminds you to turn it back on.")
+                button("Open App info (for restricted settings)") { openAppInfo() }
+            }
         }
         if (Build.VERSION.SDK_INT >= 33) {
             check("Notifications from Copier", notifications, "Allow") {
@@ -538,34 +606,21 @@ class MainActivity : Activity() {
         }
         check("Battery optimization off", battery, "Fix") { requestBatteryExemption() }
         button("Background activity settings") { openAppInfo() }
+        check("Notifications on ${mac.name}", mirroring, "Turn on") { openNotificationAccessSettings() }
+        check("Screenshots to ${mac.name}", photos, "Allow") { requestImageAccess() }
+        if (photos) {
+            switch("Send new screenshots to ${mac.name}", store.screenshots) { store.screenshots = it }
+        } else {
+            text("When Android asks, choose “Allow all”: “Select photos” can't see new screenshots.")
+        }
         if (Build.VERSION.SDK_INT >= 33) button("Add the Quick Settings tile") { requestTile() }
-        text(sendHint(automatic))
+        text(sendHint(watching))
         // Auto mode only exists if READ_LOGS was granted out of band; never a setup step.
         if (checkSelfPermission(Manifest.permission.READ_LOGS) == PackageManager.PERMISSION_GRANTED) {
             switch("Send my clipboard to ${mac.name} automatically (logcat)", store.autoClipboard) {
                 store.autoClipboard = it
                 SyncService.instance?.refreshClipboardWatcher()
             }
-        }
-        button("Clear history") {
-            AlertDialog.Builder(this)
-                .setMessage("Clear the timeline on this phone? Files stay where they were saved.")
-                .setPositiveButton("Clear") { _, _ -> activityStore.clear() }
-                .setNegativeButton("Cancel", null)
-                .show()
-        }
-        button("Unpair ${mac.name}") {
-            AlertDialog.Builder(this)
-                .setMessage("Unpair ${mac.name}? You'll need to pair again to sync.")
-                .setPositiveButton("Unpair") { _, _ ->
-                    store.pairedMac = null
-                    getSystemService(ShortcutManager::class.java).removeAllDynamicShortcuts()
-                    SyncService.instance?.reconnect()
-                    startDiscovery()
-                    render()
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
         }
     }
 

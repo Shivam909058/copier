@@ -46,17 +46,32 @@ class ClipboardBridge(context: Context) {
         }
     }
 
+    /** What a read found. [Unreadable] is "empty" or "Android refused": the API can't tell them apart. */
+    sealed interface Read {
+        data object Unreadable : Read
+        data object FromMac : Read
+        class Clip(val clip: LocalClip, val copiedAt: Long) : Read
+    }
+
     /** Only works while one of our windows has input focus: Android 10+ denies background reads. */
-    fun read(): LocalClip? {
-        val clip = clipboard.primaryClip ?: return null
-        if (clip.itemCount == 0 || clip.description.label?.toString() == LABEL) return null
+    fun readDetailed(): Read {
+        val clip = try {
+            clipboard.primaryClip
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "clipboard read threw", e) // seen on some OEM builds when the source app is gone
+            null
+        } ?: return Read.Unreadable
+        if (clip.itemCount == 0) return Read.Unreadable
+        if (clip.description.label?.toString() == LABEL) return Read.FromMac
         val sensitive = clip.description.extras?.getBoolean(EXTRA_IS_SENSITIVE) == true
         val item = clip.getItemAt(0)
-        item.uri?.let { return LocalClip.Content(it, sensitive) }
-        val text = item.text?.toString()
-        if (text.isNullOrEmpty()) return null
-        return LocalClip.Text(text, item.htmlText, sensitive)
+        val local = item.uri?.let { LocalClip.Content(it, sensitive) }
+            ?: item.text?.toString()?.takeIf { it.isNotEmpty() }?.let { LocalClip.Text(it, item.htmlText, sensitive) }
+            ?: return Read.Unreadable
+        return Read.Clip(local, clip.description.timestamp)
     }
+
+    fun read(): LocalClip? = (readDetailed() as? Read.Clip)?.clip
 
     companion object {
         const val LABEL = Proto.REMOTE_CLIP_LABEL

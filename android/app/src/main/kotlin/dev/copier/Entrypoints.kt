@@ -24,18 +24,27 @@ class FocusActivity : Activity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (!hasFocus || isFinishing) return
-        val manual = intent.getBooleanExtra(EXTRA_MANUAL, false)
-        val service = SyncService.instance
-        val clip = ClipboardBridge(this).read()
-        when {
-            service == null || !service.isConnected -> if (manual) toast("Mac isn't connected")
-            clip == null -> if (manual) toast("Nothing new on the clipboard")
-            else -> {
-                service.sendLocalClip(this, clip)
-                if (manual) toast("Clipboard sent to ${service.macName}")
-            }
+        val read = ClipboardBridge(this).readDetailed()
+        if (intent.getBooleanExtra(EXTRA_MANUAL, false)) {
+            sendManually(read)
+        } else if (CopyWatcher.instance?.onActivityRead(read) != true) {
+            AutoCopy.offer(this, read) // started by the logcat watcher
         }
         finish()
+    }
+
+    /** Tile or notification button: the user asked, so send even a clip that was sent before. */
+    private fun sendManually(read: ClipboardBridge.Read) {
+        val service = SyncService.instance
+        when {
+            service == null || !service.isConnected -> toast("Mac isn't connected")
+            read !is ClipboardBridge.Read.Clip -> toast("Nothing new on the clipboard")
+            else -> {
+                AutoCopy.remember(read)
+                service.sendLocalClip(this, read.clip)
+                toast("Clipboard sent to ${service.macName}")
+            }
+        }
     }
 
     private fun toast(text: String) = Toast.makeText(applicationContext, text, Toast.LENGTH_SHORT).show()

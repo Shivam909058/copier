@@ -5,6 +5,6 @@
     <string name="open_on_mac_label">Open on Mac</string>
     <string name="tile_label">Send clipboard</string>
     <string name="copy_watcher_label">Copier — send copies to Mac</string>
-    <string name="copy_watcher_description">Sends whatever you copy on this phone to your Mac automatically. Copier only notices taps on “Copy” buttons; it can\'t read your screen.</string>
+    <string name="copy_watcher_description">Sends what you copy on this phone to your Mac automatically. Copier notices taps on “Copy” buttons, “Copied” messages and menus closing, then reads the clipboard. It can\'t read your screen. Payment and banking apps won\'t open while this is on, so Copier turns it off when you open one.</string>
     <string name="notif_listener_label">Copier — notifications on Mac</string>
 </resources>

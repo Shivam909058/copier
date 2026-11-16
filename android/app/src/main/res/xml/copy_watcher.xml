@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Click events only, and no window content: the service sees the tapped control's label, nothing else. -->
+<!-- No window content: the service gets event labels (a tapped button's name, a toast's text), never
+     the screen. CopyWatcher narrows or widens the event types at runtime (normal vs. diagnose). -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeViewClicked"
+    android:accessibilityEventTypes="typeViewClicked|typeAnnouncement|typeNotificationStateChanged|typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="false"
     android:description="@string/copy_watcher_description"
     android:notificationTimeout="0" />

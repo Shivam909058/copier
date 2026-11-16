@@ -60,15 +60,36 @@ class RelayViews(private val activity: Activity) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
 
-    fun header(macName: String, status: String, connected: Boolean): View =
+    fun header(macName: String, status: String, connected: Boolean, onMenu: (View) -> Unit): View =
         LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             background = rounded(incomingFill, dp(22))
-            setPadding(dp(18), dp(16), dp(18), dp(16))
-            addView(TextView(activity).apply {
-                text = macName
-                textSize = 22f
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setPadding(dp(18), dp(8), dp(6), dp(16))
+            addView(LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                addView(
+                    TextView(activity).apply {
+                        text = macName
+                        textSize = 22f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    },
+                    LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+                )
+                // Options live here, at the top, not below a long timeline.
+                addView(
+                    TextView(activity).apply {
+                        text = "⋮"
+                        textSize = 24f
+                        gravity = Gravity.CENTER
+                        contentDescription = "More options"
+                        setTextColor(secondary)
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener { onMenu(it) }
+                    },
+                    LinearLayout.LayoutParams(dp(48), dp(48)),
+                )
             })
             addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
