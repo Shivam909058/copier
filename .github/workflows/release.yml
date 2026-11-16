@@ -25,6 +25,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          cache: gradle  # fewer downloads from Maven Central, which rate-limits shared runners
 
       - name: Android release key
         env:
@@ -37,7 +38,15 @@ jobs:
         working-directory: android
         env:
           COPIER_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        run: ./gradlew --no-daemon test assembleRelease "-PcopierVersion=$VERSION"
+        run: |
+          # Maven Central answers shared runners with HTTP 429 now and then. Whatever did download
+          # is kept between attempts, so a retry after a pause gets through.
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon test assembleRelease "-PcopierVersion=$VERSION"; then exit 0; fi
+            echo "::warning::Gradle failed (attempt $attempt of 3)"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 45)); fi
+          done
+          exit 1
 
       - name: Test Mac
         working-directory: mac
