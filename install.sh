@@ -9,6 +9,9 @@
 # (or ~/Applications), links the `copier` command, and opens Copier, which shows the QR code for
 # your phone. Downloads made by curl aren't quarantined, so macOS opens the self-signed app
 # without a Gatekeeper prompt.
+#
+# Options (environment): COPIER_APPS_DIR=<folder> installs elsewhere; COPIER_NO_OPEN=1 doesn't
+# launch it; COPIER_NO_CLI=1 doesn't link the `copier` command.
 set -euo pipefail
 
 REPO="Shivam909058/copier"
@@ -73,19 +76,22 @@ main() {
     (cd "$tmp" && grep " $zip_name\$" SHA256SUMS | shasum -a 256 -c - >/dev/null) \
         || die "the download doesn't match its checksum, so it wasn't installed. Run the installer again."
 
-    local apps="/Applications"
-    [[ -w "$apps" ]] || { apps="$HOME/Applications"; mkdir -p "$apps"; }
+    local apps="${COPIER_APPS_DIR:-/Applications}"
+    if [[ -z "${COPIER_APPS_DIR:-}" && ! -w "$apps" ]]; then apps="$HOME/Applications"; fi
+    mkdir -p "$apps"
     local app="$apps/Copier.app"
-    if [[ -e "$app" ]] && ! is_copier "$app"; then die "$app exists but isn't Copier; not touching it."; fi
-
-    quit_copier
-    rm -rf "$app"
+    if [[ -e "$app" ]]; then
+        is_copier "$app" || die "$app exists but isn't Copier; not touching it."
+        quit_copier  # only when replacing an installed copy
+        rm -rf "$app"
+    fi
     ditto -x -k "$tmp/$zip_name" "$apps"
     xattr -dr com.apple.quarantine "$app" 2>/dev/null || true  # curl doesn't add it; belt and braces
     is_copier "$app" || die "the downloaded archive didn't contain Copier.app."
 
     local cli=""
     for dir in /opt/homebrew/bin /usr/local/bin "$HOME/.local/bin"; do
+        [[ "${COPIER_NO_CLI:-0}" == 1 ]] && break
         [[ -d "$dir" && -w "$dir" ]] || continue
         local link="$dir/copier"
         if [[ -e "$link" && ! ( -L "$link" && "$(readlink "$link")" == *Copier.app* ) ]]; then continue; fi
@@ -94,7 +100,7 @@ main() {
         break
     done
 
-    open "$app"
+    [[ "${COPIER_NO_OPEN:-0}" == 1 ]] || open "$app"
     bold "✓ Copier $(defaults read "$app/Contents/Info.plist" CFBundleShortVersionString) is installed in $apps."
     echo
     note "Next, on your phone: scan the QR code Copier just opened, tap “Install Copier”, then “Open Copier to pair”."
